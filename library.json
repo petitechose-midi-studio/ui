@@ -1,0 +1,38 @@
+{
+  "name": "ms-ui",
+  "version": "0.1.0-dev",
+  "description": "MIDI Studio shared LVGL UI components",
+  "keywords": ["midi-studio", "ui", "lvgl"],
+  "authors": [
+    {
+      "name": "petitechose.audio",
+      "url": "https://github.com/petitechose-midi-studio"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/petitechose-midi-studio/ui.git"
+  },
+  "license": "CC-BY-NC-SA-4.0",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {},
+  "export": {
+    "include": ["src"],
+    "exclude": ["examples", ".git", ".gitignore"]
+  },
+  "build": {
+    "includeDir": "src",
+    "srcDir": "src",
+    "libArchive": false,
+    "flags": [
+      "-D LV_CONF_INCLUDE_SIMPLE",
+      "-D LV_LVGL_H_INCLUDE_SIMPLE"
+    ],
+    "srcFilter": [
+      "+<**/*.c>",
+      "+<**/*.cpp>",
+      "-<main.cpp>"
+    ]
+  }
+}

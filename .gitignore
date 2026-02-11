@@ -1,0 +1,9 @@
+.pio/
+build/
+bin/
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
