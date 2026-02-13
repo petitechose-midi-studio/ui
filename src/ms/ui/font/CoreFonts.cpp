@@ -2,6 +2,11 @@
 
 #include <config/PlatformCompat.hpp>
 
+// Some applications may embed ms-ui while also linking another library that
+// already provides the CoreFonts global symbols (fonts registry + entries).
+// Define MS_UI_EXTERNAL_CORE_FONTS in those builds to avoid ODR violations.
+#ifndef MS_UI_EXTERNAL_CORE_FONTS
+
 // Font binary data (stored in flash via PROGMEM)
 #include "data/interdisplay_bold_13.c.inc"
 #include "data/interdisplay_bold_14.c.inc"
@@ -53,3 +58,5 @@ void linkCoreFontAliases() {
     fonts.tempo_label = fonts.inter_14_semibold;
     fonts.list_item_label = fonts.inter_14_semibold;
 }
+
+#endif  // MS_UI_EXTERNAL_CORE_FONTS
