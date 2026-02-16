@@ -19,7 +19,7 @@ namespace ms::ui {
  *
  * Groups overlay-related dependencies that always travel together:
  * - OverlayManager for show/hide management
- * - scopeElement for scoped input bindings (nullptr = global scope)
+ * - scopeElement for scoped input bindings when handler wants LVGL-scoped authority
  * - overlayElement for positioning/rendering the overlay
  *
  * Usage in handlers:
@@ -40,7 +40,7 @@ namespace ms::ui {
 template <typename OverlayEnumT>
 struct OverlayBindingContext {
     oc::context::OverlayManager<OverlayEnumT>& controller;
-    lv_obj_t* scopeElement;    ///< Element for scoped input bindings (nullptr = global)
+    lv_obj_t* scopeElement;    ///< Optional LVGL scope element used by handlers that bind with oc::ui::lvgl::scope(...)
     lv_obj_t* overlayElement;  ///< Element for overlay UI positioning
 };
 
