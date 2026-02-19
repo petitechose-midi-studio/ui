@@ -144,7 +144,7 @@ void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, in
     if (fonts.list_item_label) {
         lv_obj_set_style_text_font(widgets.keyLabel, fonts.list_item_label, LV_STATE_DEFAULT);
     }
-    style::apply(widgets.keyLabel).textColor(base_theme::color::TEXT_SECONDARY);
+    style::apply(widgets.keyLabel).textColor(base_theme::color::INACTIVE);
 
     widgets.valueLabel = lv_label_create(container);
     lv_obj_set_width(widgets.valueLabel, VALUE_COL_W);
@@ -162,11 +162,11 @@ void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, in
 void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
-            isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::TEXT_SECONDARY);
+            isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
     }
     if (widgets.valueLabel) {
         style::apply(widgets.valueLabel).textColor(
-            isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE_LIGHTER);
+            isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
     }
 }
 
