@@ -19,6 +19,7 @@
  */
 struct CoreFonts {
     // Generic fonts (loaded from binaries)
+    lv_font_t* inter_12_medium = nullptr;
     lv_font_t* inter_13_medium = nullptr;
     lv_font_t* inter_13_bold = nullptr;
     lv_font_t* inter_14_light = nullptr;

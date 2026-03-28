@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <config/PlatformCompat.hpp>
+
 namespace ms::ui {
 
 StringListSelector::StringListSelector(lv_obj_t* parent)
@@ -12,7 +14,7 @@ void StringListSelector::invalidateItems() {
     items_size_ = 0;
 }
 
-void StringListSelector::render(const StringListSelectorProps& props) {
+FLASHMEM void StringListSelector::render(const StringListSelectorProps& props) {
     if (!props.visible) {
         hide();
         return;

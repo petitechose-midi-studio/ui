@@ -1,5 +1,6 @@
 #include "VirtualListOverlay.hpp"
 
+#include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
@@ -28,7 +29,7 @@ VirtualListOverlay::VirtualListOverlay(lv_obj_t* parent)
     hide();
 }
 
-void VirtualListOverlay::createHeader() {
+FLASHMEM void VirtualListOverlay::createHeader() {
     header_row_ = lv_obj_create(overlay_.header());
     lv_obj_set_size(header_row_, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_clear_flag(header_row_, LV_OBJ_FLAG_SCROLLABLE);
@@ -63,7 +64,7 @@ void VirtualListOverlay::createHeader() {
     style::apply(meta_label_).textColor(base_theme::color::TEXT_SECONDARY);
 }
 
-void VirtualListOverlay::createList() {
+FLASHMEM void VirtualListOverlay::createList() {
     list_ = std::make_unique<widget::VirtualList>(overlay_.content());
     list_->visibleCount(5)
         .itemHeight(32)

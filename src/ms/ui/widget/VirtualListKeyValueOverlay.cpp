@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
@@ -55,7 +56,7 @@ void VirtualListKeyValueOverlay::setLabelTextIfChanged(
     lv_label_set_text(label, cache.c_str());
 }
 
-void VirtualListKeyValueOverlay::syncRows(
+FLASHMEM void VirtualListKeyValueOverlay::syncRows(
     const VirtualListKeyValueOverlayProps& props,
     std::vector<int>& dirtyIndices
 ) {
@@ -98,7 +99,7 @@ void VirtualListKeyValueOverlay::invalidateDirtyRows(const std::vector<int>& dir
     }
 }
 
-void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverlayProps& props) {
+FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverlayProps& props) {
     if (!props.visible) {
         overlay_.hide();
         return;
@@ -125,7 +126,7 @@ void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverlayProps& p
     }
 }
 
-void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
+FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
     auto* list = overlay_.list();
     if (!list) return;
 
@@ -166,7 +167,7 @@ void VirtualListKeyValueOverlay::updateSlotHighlight(widget::VirtualSlot& slot, 
     applyHighlightStyle(widgets, isSelected);
 }
 
-void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
+FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
     if (widgets.created) return;
 

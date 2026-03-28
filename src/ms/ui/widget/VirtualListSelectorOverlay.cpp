@@ -1,7 +1,7 @@
 #include "VirtualListSelectorOverlay.hpp"
 
-#include <cstdio>
-
+#include <config/PlatformCompat.hpp>
+#include <oc/type/TextFormat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
@@ -43,7 +43,7 @@ VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
-void VirtualListSelectorOverlay::render(const VirtualListSelectorOverlayProps& props) {
+FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverlayProps& props) {
     if (!props.visible) {
         overlay_.hide();
         return;
@@ -88,7 +88,7 @@ void VirtualListSelectorOverlay::render(const VirtualListSelectorOverlayProps& p
     }
 }
 
-void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
+FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
     auto* list = overlay_.list();
     if (!list) return;
 
@@ -108,7 +108,7 @@ void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, int index, 
 
     if (widgets.indexLabel) {
         char indexStr[12];
-        snprintf(indexStr, sizeof(indexStr), "%d", index + 1);
+        oc::type::text::formatUnsigned(indexStr, sizeof(indexStr), static_cast<unsigned>(index + 1));
         lv_label_set_text(widgets.indexLabel, indexStr);
         if (current_props_.showIndexColumn) {
             lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
@@ -131,7 +131,7 @@ void VirtualListSelectorOverlay::updateSlotHighlight(widget::VirtualSlot& slot, 
     applyHighlightStyle(widgets, isSelected);
 }
 
-void VirtualListSelectorOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
+FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
     if (widgets.created) return;
 

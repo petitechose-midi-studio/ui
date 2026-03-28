@@ -8,6 +8,7 @@
 #ifndef MS_UI_EXTERNAL_CORE_FONTS
 
 // Font binary data (stored in flash via PROGMEM)
+#include "data/interdisplay_medium_12.c.inc"
 #include "data/interdisplay_bold_13.c.inc"
 #include "data/interdisplay_bold_14.c.inc"
 #include "data/interdisplay_bold_20.c.inc"
@@ -30,6 +31,10 @@ const oc::ui::lvgl::font::Entry CORE_FONT_ENTRIES[] = {
      interdisplay_bold_20_bin_len, "SplashTitle", true},
     {&fonts.splash_version, jetbrainsmononl_medium_13_bin,
      jetbrainsmononl_medium_13_bin_len, "SplashVersion", true},
+
+    // Generic fonts - 12px
+    {&fonts.inter_12_medium, interdisplay_medium_12_bin,
+     interdisplay_medium_12_bin_len, "Medium12", false},
 
     // Generic fonts - 13px
     {&fonts.inter_13_medium, interdisplay_medium_13_bin,

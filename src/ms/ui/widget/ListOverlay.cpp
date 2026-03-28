@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
 
@@ -32,7 +33,7 @@ void ListOverlay::setTitle(const std::string& title) {
     }
 }
 
-void ListOverlay::setItems(const std::vector<std::string>& items) {
+FLASHMEM void ListOverlay::setItems(const std::vector<std::string>& items) {
     if (items_ == items) { return; }
 
     items_ = items;
@@ -121,7 +122,7 @@ void ListOverlay::removeLabel(size_t index) {
     }
 }
 
-void ListOverlay::createOverlay() {
+FLASHMEM void ListOverlay::createOverlay() {
     overlay_ = lv_obj_create(parent_);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_FLOATING);
     style::apply(overlay_)
@@ -144,7 +145,7 @@ void ListOverlay::createOverlay() {
     populateList();
 }
 
-void ListOverlay::createTitleLabel() {
+FLASHMEM void ListOverlay::createTitleLabel() {
     // Use framework Label widget with auto-scroll for overflow text
     title_label_ = std::make_unique<Label>(container_);
     title_label_->alignment(LV_TEXT_ALIGN_CENTER)
@@ -168,7 +169,7 @@ void ListOverlay::createTitleLabel() {
     }
 }
 
-void ListOverlay::createList() {
+FLASHMEM void ListOverlay::createList() {
     list_ = lv_list_create(container_);
     lv_obj_set_size(list_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_grow(list_, 1);
@@ -194,7 +195,7 @@ void ListOverlay::createList() {
         LV_EVENT_SCROLL_BEGIN, nullptr);
 }
 
-void ListOverlay::populateList() {
+FLASHMEM void ListOverlay::populateList() {
     if (!list_) return;
 
     buttons_.clear();
