@@ -43,50 +43,80 @@ VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
+void VirtualListKeyValueOverlay::setLabelTextIfChanged(
+    lv_obj_t* label,
+    std::string& cache,
+    const std::string& text
+) {
+    if (!label) return;
+    if (cache == text) return;
+
+    cache = text;
+    lv_label_set_text(label, cache.c_str());
+}
+
+void VirtualListKeyValueOverlay::syncRows(
+    const VirtualListKeyValueOverlayProps& props,
+    std::vector<int>& dirtyIndices
+) {
+    const bool canSkipRowDiff =
+        (props.dataRevision != 0) &&
+        (props.dataRevision == last_data_revision_) &&
+        (props.rowCount == last_row_count_);
+
+    if (canSkipRowDiff) return;
+
+    const size_t nextCount = static_cast<size_t>(std::max(0, props.rowCount));
+    if (rows_.size() != nextCount) {
+        rows_.assign(nextCount, {"", ""});
+        dirtyIndices.reserve(nextCount);
+    }
+
+    for (int i = 0; i < props.rowCount; ++i) {
+        const auto* row = props.rows ? &props.rows[i] : nullptr;
+        const std::string nextKey = (row && row->key) ? row->key : "";
+        const std::string nextValue = (row && row->value) ? row->value : "";
+
+        auto& current = rows_[static_cast<size_t>(i)];
+        if (current.first != nextKey || current.second != nextValue) {
+            current.first = nextKey;
+            current.second = nextValue;
+            dirtyIndices.push_back(i);
+        }
+    }
+
+    last_data_revision_ = props.dataRevision;
+    last_row_count_ = props.rowCount;
+}
+
+void VirtualListKeyValueOverlay::invalidateDirtyRows(const std::vector<int>& dirtyIndices) {
+    auto* list = overlay_.list();
+    if (!list || dirtyIndices.empty()) return;
+
+    for (int index : dirtyIndices) {
+        list->invalidateIndex(index);
+    }
+}
+
 void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverlayProps& props) {
     if (!props.visible) {
         overlay_.hide();
         return;
     }
 
-    current_props_ = props;
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
 
-    bool dataChanged = false;
-    const bool canSkipRowRebuild =
-        (props.dataRevision != 0) &&
-        (props.dataRevision == last_data_revision_) &&
-        (props.rowCount == last_row_count_);
-
-    if (!canSkipRowRebuild) {
-        std::vector<std::pair<std::string, std::string>> next;
-        next.reserve(static_cast<size_t>(std::max(0, props.rowCount)));
-
-        for (int i = 0; i < props.rowCount; ++i) {
-            const auto* r = props.rows ? &props.rows[i] : nullptr;
-            next.emplace_back(
-                r && r->key ? r->key : "",
-                r && r->value ? r->value : ""
-            );
-        }
-
-        if (next != rows_) {
-            rows_ = std::move(next);
-            dataChanged = true;
-        }
-
-        last_data_revision_ = props.dataRevision;
-        last_row_count_ = props.rowCount;
-    }
+    std::vector<int> dirtyIndices;
+    syncRows(props, dirtyIndices);
 
     auto* list = overlay_.list();
     if (list) {
         const bool countChanged = list->setTotalCount(static_cast<int>(rows_.size()));
         list->setSelectedIndex(props.selectedIndex);
 
-        if (!countChanged && dataChanged && overlay_.isVisible()) {
-            list->invalidate();
+        if (!countChanged && overlay_.isVisible()) {
+            invalidateDirtyRows(dirtyIndices);
         }
     }
 
@@ -107,12 +137,21 @@ void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, int index, 
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
 
     if (widgets.keyLabel) {
-        lv_label_set_text(widgets.keyLabel, rows_[static_cast<size_t>(index)].first.c_str());
+        setLabelTextIfChanged(
+            widgets.keyLabel,
+            widgets.keyCache,
+            rows_[static_cast<size_t>(index)].first
+        );
     }
     if (widgets.valueLabel) {
-        lv_label_set_text(widgets.valueLabel, rows_[static_cast<size_t>(index)].second.c_str());
+        setLabelTextIfChanged(
+            widgets.valueLabel,
+            widgets.valueCache,
+            rows_[static_cast<size_t>(index)].second
+        );
     }
 
+    widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
 }
 
@@ -160,6 +199,8 @@ void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, in
 }
 
 void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
+    if (widgets.highlighted == isSelected) return;
+
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
             isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
@@ -168,6 +209,8 @@ void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool 
         style::apply(widgets.valueLabel).textColor(
             isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
     }
+
+    widgets.highlighted = isSelected;
 }
 
 }  // namespace ms::ui

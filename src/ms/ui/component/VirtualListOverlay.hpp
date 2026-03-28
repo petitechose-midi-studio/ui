@@ -6,6 +6,7 @@
  */
 
 #include <memory>
+#include <string>
 
 #include <lvgl.h>
 
@@ -49,6 +50,8 @@ private:
     lv_obj_t* header_row_ = nullptr;
     lv_obj_t* title_label_ = nullptr;
     lv_obj_t* meta_label_ = nullptr;
+    std::string title_cache_;
+    std::string meta_cache_;
 
     std::unique_ptr<oc::ui::lvgl::widget::VirtualList> list_;
 };

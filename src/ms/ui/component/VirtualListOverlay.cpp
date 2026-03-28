@@ -76,11 +76,23 @@ void VirtualListOverlay::configureList(int visibleCount, int itemHeight) {
 }
 
 void VirtualListOverlay::setTitle(const char* text) {
-    if (title_label_) lv_label_set_text(title_label_, text ? text : "");
+    if (!title_label_) return;
+
+    const char* next = text ? text : "";
+    if (title_cache_ == next) return;
+
+    title_cache_ = next;
+    lv_label_set_text(title_label_, title_cache_.c_str());
 }
 
 void VirtualListOverlay::setMeta(const char* text) {
-    if (meta_label_) lv_label_set_text(meta_label_, text ? text : "");
+    if (!meta_label_) return;
+
+    const char* next = text ? text : "";
+    if (meta_cache_ == next) return;
+
+    meta_cache_ = next;
+    lv_label_set_text(meta_label_, meta_cache_.c_str());
 }
 
 void VirtualListOverlay::show() {

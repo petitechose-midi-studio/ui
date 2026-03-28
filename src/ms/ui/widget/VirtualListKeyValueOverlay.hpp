@@ -52,17 +52,23 @@ private:
         bool created = false;
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
+        bool highlighted = false;
+        int boundIndex = -1;
+        std::string keyCache;
+        std::string valueCache;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
+    void syncRows(const VirtualListKeyValueOverlayProps& props, std::vector<int>& dirtyIndices);
+    void invalidateDirtyRows(const std::vector<int>& dirtyIndices);
+    static void setLabelTextIfChanged(lv_obj_t* label, std::string& cache, const std::string& text);
 
     VirtualListOverlay overlay_;
     std::vector<SlotWidgets> slot_widgets_;
     std::vector<std::pair<std::string, std::string>> rows_;
-    VirtualListKeyValueOverlayProps current_props_{};
 
     uint32_t last_data_revision_ = 0;
     int last_row_count_ = 0;
