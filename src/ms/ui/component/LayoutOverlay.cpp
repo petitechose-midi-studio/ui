@@ -1,5 +1,6 @@
 #include "LayoutOverlay.hpp"
 
+#include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
@@ -12,7 +13,7 @@ namespace {
 constexpr uint8_t OVERLAY_BG_OPACITY = 230;  // ~90% opacity
 }
 
-LayoutOverlay::LayoutOverlay(lv_obj_t* parent) : parent_(parent) {
+FLASHMEM LayoutOverlay::LayoutOverlay(lv_obj_t* parent) : parent_(parent) {
     // Fullscreen overlay with semi-transparent background
     overlay_ = lv_obj_create(parent_);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_FLOATING);
@@ -49,14 +50,14 @@ LayoutOverlay::LayoutOverlay(lv_obj_t* parent) : parent_(parent) {
     style::apply(footer_).transparent().noScroll().pad(0);
 }
 
-LayoutOverlay::~LayoutOverlay() {
+FLASHMEM LayoutOverlay::~LayoutOverlay() {
     if (overlay_) {
         lv_obj_delete(overlay_);
         overlay_ = nullptr;
     }
 }
 
-void LayoutOverlay::showHeader(bool show) {
+FLASHMEM void LayoutOverlay::showHeader(bool show) {
     if (header_) {
         if (show) {
             lv_obj_clear_flag(header_, LV_OBJ_FLAG_HIDDEN);
@@ -66,7 +67,7 @@ void LayoutOverlay::showHeader(bool show) {
     }
 }
 
-void LayoutOverlay::showFooter(bool show) {
+FLASHMEM void LayoutOverlay::showFooter(bool show) {
     if (footer_) {
         if (show) {
             lv_obj_clear_flag(footer_, LV_OBJ_FLAG_HIDDEN);
@@ -76,14 +77,14 @@ void LayoutOverlay::showFooter(bool show) {
     }
 }
 
-void LayoutOverlay::show() {
+FLASHMEM void LayoutOverlay::show() {
     if (overlay_) {
         lv_obj_clear_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
         visible_ = true;
     }
 }
 
-void LayoutOverlay::hide() {
+FLASHMEM void LayoutOverlay::hide() {
     if (overlay_) {
         lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
         visible_ = false;

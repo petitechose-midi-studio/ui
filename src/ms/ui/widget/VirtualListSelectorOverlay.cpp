@@ -21,7 +21,7 @@ constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int INDEX_W = 24;
 }
 
-VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent)
+FLASHMEM VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent)
     : overlay_(parent) {
     overlay_.configureList(VISIBLE_SLOTS, ITEM_HEIGHT);
 
@@ -39,7 +39,7 @@ VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent)
     slot_widgets_.resize(VISIBLE_SLOTS);
 }
 
-VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
+FLASHMEM VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
@@ -120,7 +120,7 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
     applyHighlightStyle(widgets, isSelected);
 }
 
-void VirtualListSelectorOverlay::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
+FLASHMEM void VirtualListSelectorOverlay::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
     auto* list = overlay_.list();
     if (!list) return;
 
@@ -160,7 +160,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(widget::VirtualSlot&
     widgets.created = true;
 }
 
-void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
+FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
     if (widgets.label) {
         style::apply(widgets.label).textColor(
             isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);

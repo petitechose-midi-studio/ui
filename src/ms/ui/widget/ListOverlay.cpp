@@ -11,16 +11,16 @@ namespace ms::ui {
 using namespace oc::ui::lvgl;
 namespace style = oc::ui::lvgl::style;
 
-ListOverlay::ListOverlay(lv_obj_t* parent) : parent_(parent) {
+FLASHMEM ListOverlay::ListOverlay(lv_obj_t* parent) : parent_(parent) {
     createOverlay();
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
     ui_created_ = true;
     visible_ = false;
 }
 
-ListOverlay::~ListOverlay() { cleanup(); }
+FLASHMEM ListOverlay::~ListOverlay() { cleanup(); }
 
-void ListOverlay::setTitle(const std::string& title) {
+FLASHMEM void ListOverlay::setTitle(const std::string& title) {
     title_ = title;
 
     if (ui_created_ && title_label_) {
@@ -51,7 +51,7 @@ FLASHMEM void ListOverlay::setItems(const std::vector<std::string>& items) {
     }
 }
 
-void ListOverlay::setSelectedIndex(int index) {
+FLASHMEM void ListOverlay::setSelectedIndex(int index) {
     if (items_.empty()) {
         selected_index_ = 0;
         return;
@@ -73,7 +73,7 @@ void ListOverlay::setSelectedIndex(int index) {
     }
 }
 
-void ListOverlay::show() {
+FLASHMEM void ListOverlay::show() {
     if (overlay_) {
         lv_obj_clear_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
         visible_ = true;
@@ -82,28 +82,28 @@ void ListOverlay::show() {
     }
 }
 
-void ListOverlay::hide() {
+FLASHMEM void ListOverlay::hide() {
     if (overlay_) {
         lv_obj_add_flag(overlay_, LV_OBJ_FLAG_HIDDEN);
         visible_ = false;
     }
 }
 
-bool ListOverlay::isVisible() const { return visible_ && ui_created_; }
+FLASHMEM bool ListOverlay::isVisible() const { return visible_ && ui_created_; }
 
-int ListOverlay::getSelectedIndex() const { return items_.empty() ? -1 : selected_index_; }
+FLASHMEM int ListOverlay::getSelectedIndex() const { return items_.empty() ? -1 : selected_index_; }
 
-int ListOverlay::getItemCount() const { return items_.size(); }
+FLASHMEM int ListOverlay::getItemCount() const { return items_.size(); }
 
-lv_obj_t* ListOverlay::getButton(size_t index) const {
+FLASHMEM lv_obj_t* ListOverlay::getButton(size_t index) const {
     return (index < buttons_.size()) ? buttons_[index] : nullptr;
 }
 
-oc::ui::lvgl::Label* ListOverlay::getLabel(size_t index) const {
+FLASHMEM oc::ui::lvgl::Label* ListOverlay::getLabel(size_t index) const {
     return (index < labels_.size()) ? labels_[index].get() : nullptr;
 }
 
-void ListOverlay::setItemFont(size_t index, const lv_font_t* font) {
+FLASHMEM void ListOverlay::setItemFont(size_t index, const lv_font_t* font) {
     if (!font) return;
 
     auto* label = getLabel(index);
@@ -112,7 +112,7 @@ void ListOverlay::setItemFont(size_t index, const lv_font_t* font) {
     }
 }
 
-void ListOverlay::removeLabel(size_t index) {
+FLASHMEM void ListOverlay::removeLabel(size_t index) {
     if (index < labels_.size() && labels_[index]) {
         // Manually delete LVGL container since ownsLvglObjects is false
         if (labels_[index]->getElement()) {
@@ -246,7 +246,7 @@ FLASHMEM void ListOverlay::populateList() {
     updateHighlight();
 }
 
-static void applyStateRecursive(lv_obj_t* obj, lv_state_t state, bool apply) {
+FLASHMEM static void applyStateRecursive(lv_obj_t* obj, lv_state_t state, bool apply) {
     if (!obj) return;
 
     if (apply) {
@@ -262,7 +262,7 @@ static void applyStateRecursive(lv_obj_t* obj, lv_state_t state, bool apply) {
     }
 }
 
-void ListOverlay::updateHighlight() {
+FLASHMEM void ListOverlay::updateHighlight() {
     if (buttons_.empty() || selected_index_ < 0 ||
         selected_index_ >= static_cast<int>(buttons_.size())) {
         return;
@@ -279,7 +279,7 @@ void ListOverlay::updateHighlight() {
     previous_index_ = selected_index_;
 }
 
-void ListOverlay::scrollToSelected(bool animate) {
+FLASHMEM void ListOverlay::scrollToSelected(bool animate) {
     if (buttons_.empty() || selected_index_ < 0 ||
         selected_index_ >= static_cast<int>(buttons_.size()) || !list_) {
         return;
@@ -288,7 +288,7 @@ void ListOverlay::scrollToSelected(bool animate) {
     lv_obj_scroll_to_view(buttons_[selected_index_], animate ? LV_ANIM_ON : LV_ANIM_OFF);
 }
 
-void ListOverlay::destroyList() {
+FLASHMEM void ListOverlay::destroyList() {
     // Labels have ownsLvglObjects(false), so they don't delete LVGL objects
     // LVGL parent-child handles cleanup when lv_obj_clean() is called
     labels_.clear();
@@ -298,7 +298,7 @@ void ListOverlay::destroyList() {
     buttons_.clear();
 }
 
-void ListOverlay::cleanup() {
+FLASHMEM void ListOverlay::cleanup() {
     // Labels have ownsLvglObjects(false) - overlay deletion handles LVGL cleanup
     labels_.clear();
     title_label_.reset();

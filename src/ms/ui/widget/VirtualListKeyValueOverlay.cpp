@@ -22,7 +22,7 @@ constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int VALUE_COL_W = 110; // stable alignment for values
 }
 
-VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
+FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
     : overlay_(parent) {
     overlay_.configureList(VISIBLE_SLOTS, ITEM_HEIGHT);
 
@@ -40,11 +40,11 @@ VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
     slot_widgets_.resize(VISIBLE_SLOTS);
 }
 
-VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
+FLASHMEM VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
-void VirtualListKeyValueOverlay::setLabelTextIfChanged(
+FLASHMEM void VirtualListKeyValueOverlay::setLabelTextIfChanged(
     lv_obj_t* label,
     std::string& cache,
     const std::string& text
@@ -90,7 +90,7 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
     last_row_count_ = props.rowCount;
 }
 
-void VirtualListKeyValueOverlay::invalidateDirtyRows(const std::vector<int>& dirtyIndices) {
+FLASHMEM void VirtualListKeyValueOverlay::invalidateDirtyRows(const std::vector<int>& dirtyIndices) {
     auto* list = overlay_.list();
     if (!list || dirtyIndices.empty()) return;
 
@@ -156,7 +156,7 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
     applyHighlightStyle(widgets, isSelected);
 }
 
-void VirtualListKeyValueOverlay::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
+FLASHMEM void VirtualListKeyValueOverlay::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
     auto* list = overlay_.list();
     if (!list) return;
 
@@ -199,7 +199,7 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot&
     widgets.created = true;
 }
 
-void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
+FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
     if (widgets.highlighted == isSelected) return;
 
     if (widgets.keyLabel) {

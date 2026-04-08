@@ -18,7 +18,7 @@ constexpr int HEADER_PAD_BOTTOM = base_theme::layout::SPACE_SM; // 4
 constexpr int HEADER_COL_GAP = base_theme::layout::SPACE_MD; // 8
 }
 
-VirtualListOverlay::VirtualListOverlay(lv_obj_t* parent)
+FLASHMEM VirtualListOverlay::VirtualListOverlay(lv_obj_t* parent)
     : overlay_(parent) {
     overlay_.showHeader(true);
     overlay_.showFooter(false);
@@ -71,12 +71,12 @@ FLASHMEM void VirtualListOverlay::createList() {
         .scrollMode(widget::ScrollMode::CenterLocked);
 }
 
-void VirtualListOverlay::configureList(int visibleCount, int itemHeight) {
+FLASHMEM void VirtualListOverlay::configureList(int visibleCount, int itemHeight) {
     if (!list_) return;
     list_->visibleCount(visibleCount).itemHeight(itemHeight);
 }
 
-void VirtualListOverlay::setTitle(const char* text) {
+FLASHMEM void VirtualListOverlay::setTitle(const char* text) {
     if (!title_label_) return;
 
     const char* next = text ? text : "";
@@ -86,7 +86,7 @@ void VirtualListOverlay::setTitle(const char* text) {
     lv_label_set_text(title_label_, title_cache_.c_str());
 }
 
-void VirtualListOverlay::setMeta(const char* text) {
+FLASHMEM void VirtualListOverlay::setMeta(const char* text) {
     if (!meta_label_) return;
 
     const char* next = text ? text : "";
@@ -96,14 +96,14 @@ void VirtualListOverlay::setMeta(const char* text) {
     lv_label_set_text(meta_label_, meta_cache_.c_str());
 }
 
-void VirtualListOverlay::show() {
+FLASHMEM void VirtualListOverlay::show() {
     if (overlay_.isVisible()) return;
 
     overlay_.show();
     if (list_) list_->show();
 }
 
-void VirtualListOverlay::hide() {
+FLASHMEM void VirtualListOverlay::hide() {
     if (!overlay_.isVisible()) return;
 
     overlay_.hide();

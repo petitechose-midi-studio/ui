@@ -9,7 +9,7 @@ namespace ms::ui {
 StringListSelector::StringListSelector(lv_obj_t* parent)
     : BaseSelector(parent) {}
 
-void StringListSelector::invalidateItems() {
+FLASHMEM void StringListSelector::invalidateItems() {
     items_ref_ = nullptr;
     items_size_ = 0;
 }
