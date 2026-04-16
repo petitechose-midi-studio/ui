@@ -16,6 +16,7 @@
  * @see DeviceSelector for a more complex virtualized variant
  */
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -54,6 +55,7 @@ public:
 
     void setTitle(const std::string& title);
     void setItems(const std::vector<std::string>& items);
+    void setItems(const char* const* items, size_t itemCount);
     void setSelectedIndex(int index);
 
     /**
@@ -102,7 +104,10 @@ private:
 
     std::vector<lv_obj_t*> buttons_;
     std::vector<std::unique_ptr<oc::ui::lvgl::Label>> labels_;
-    std::vector<std::string> items_;
+    std::vector<std::string> owned_items_;
+    const char* const* static_items_ = nullptr;
+    size_t item_count_ = 0;
+    bool using_static_items_ = false;
     std::string title_;
     int selected_index_ = 0;
     int previous_index_ = -1;  // Track previous selection for optimized highlight updates

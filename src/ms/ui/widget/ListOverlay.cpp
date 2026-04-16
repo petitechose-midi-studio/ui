@@ -34,12 +34,38 @@ FLASHMEM void ListOverlay::setTitle(const std::string& title) {
 }
 
 FLASHMEM void ListOverlay::setItems(const std::vector<std::string>& items) {
-    if (items_ == items) { return; }
+    if (!using_static_items_ && owned_items_ == items) { return; }
 
-    items_ = items;
+    owned_items_ = items;
+    static_items_ = nullptr;
+    using_static_items_ = false;
+    item_count_ = owned_items_.size();
 
-    if (selected_index_ >= static_cast<int>(items_.size())) {
-        selected_index_ = items_.empty() ? 0 : items_.size() - 1;
+    if (selected_index_ >= static_cast<int>(item_count_)) {
+        selected_index_ = item_count_ == 0 ? 0 : static_cast<int>(item_count_ - 1);
+    }
+    if (selected_index_ < 0) { selected_index_ = 0; }
+
+    if (ui_created_ && list_) {
+        destroyList();
+        populateList();
+        updateHighlight();
+        scrollToSelected();
+    }
+}
+
+FLASHMEM void ListOverlay::setItems(const char* const* items, size_t itemCount) {
+    if (using_static_items_ && static_items_ == items && item_count_ == itemCount) {
+        return;
+    }
+
+    owned_items_.clear();
+    static_items_ = items;
+    item_count_ = itemCount;
+    using_static_items_ = true;
+
+    if (selected_index_ >= static_cast<int>(item_count_)) {
+        selected_index_ = item_count_ == 0 ? 0 : static_cast<int>(item_count_ - 1);
     }
     if (selected_index_ < 0) { selected_index_ = 0; }
 
@@ -52,12 +78,12 @@ FLASHMEM void ListOverlay::setItems(const std::vector<std::string>& items) {
 }
 
 FLASHMEM void ListOverlay::setSelectedIndex(int index) {
-    if (items_.empty()) {
+    if (item_count_ == 0) {
         selected_index_ = 0;
         return;
     }
 
-    int size = static_cast<int>(items_.size());
+    int size = static_cast<int>(item_count_);
     int prev_index = selected_index_;
     index = ((index % size) + size) % size;
 
@@ -91,9 +117,9 @@ FLASHMEM void ListOverlay::hide() {
 
 FLASHMEM bool ListOverlay::isVisible() const { return visible_ && ui_created_; }
 
-FLASHMEM int ListOverlay::getSelectedIndex() const { return items_.empty() ? -1 : selected_index_; }
+FLASHMEM int ListOverlay::getSelectedIndex() const { return item_count_ == 0 ? -1 : selected_index_; }
 
-FLASHMEM int ListOverlay::getItemCount() const { return items_.size(); }
+FLASHMEM int ListOverlay::getItemCount() const { return static_cast<int>(item_count_); }
 
 FLASHMEM lv_obj_t* ListOverlay::getButton(size_t index) const {
     return (index < buttons_.size()) ? buttons_[index] : nullptr;
@@ -202,7 +228,7 @@ FLASHMEM void ListOverlay::populateList() {
     labels_.clear();
     previous_index_ = -1;  // Reset for optimized highlight tracking
 
-    for (const auto& item : items_) {
+    const auto addItem = [this](const char* itemText) {
         lv_obj_t* btn = lv_obj_create(list_);
         lv_obj_set_width(btn, LV_PCT(100));
         lv_obj_set_height(btn, LV_SIZE_CONTENT);
@@ -237,10 +263,20 @@ FLASHMEM void ListOverlay::populateList() {
         // Apply styles for focused state on the inner label element
         lv_obj_set_style_text_color(label->getLabel(), lv_color_hex(base_theme::color::TEXT_PRIMARY), LV_STATE_FOCUSED);
 
-        label->setText(item);
+        label->setText(itemText != nullptr ? itemText : "");
 
         labels_.push_back(std::move(label));
         buttons_.push_back(btn);
+    };
+
+    if (using_static_items_) {
+        for (size_t i = 0; i < item_count_; ++i) {
+            addItem(static_items_ != nullptr ? static_items_[i] : "");
+        }
+    } else {
+        for (const auto& item : owned_items_) {
+            addItem(item.c_str());
+        }
     }
 
     updateHighlight();

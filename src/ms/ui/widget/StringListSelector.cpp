@@ -26,8 +26,8 @@ FLASHMEM void StringListSelector::render(const StringListSelectorProps& props) {
 
     const int selected = props.selectedIndex;
 
-    if (!props.items || props.items->empty()) {
-        overlay().setItems({});
+    if (!props.items || props.itemCount == 0) {
+        overlay().setItems(nullptr, 0);
         overlay().setSelectedIndex(0);
         items_ref_ = nullptr;
         items_size_ = 0;
@@ -35,10 +35,10 @@ FLASHMEM void StringListSelector::render(const StringListSelectorProps& props) {
     }
 
     // Only rebuild list when items change.
-    if (props.items != items_ref_ || props.items->size() != items_size_) {
-        overlay().setItems(*props.items);
+    if (props.items != items_ref_ || props.itemCount != items_size_) {
+        overlay().setItems(props.items, props.itemCount);
         items_ref_ = props.items;
-        items_size_ = props.items->size();
+        items_size_ = props.itemCount;
     }
 
     const int maxIndex = std::max(0, static_cast<int>(items_size_) - 1);

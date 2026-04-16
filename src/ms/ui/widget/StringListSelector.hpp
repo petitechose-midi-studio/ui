@@ -5,15 +5,15 @@
  * @brief Stateless string list selector (render(props))
  */
 
-#include <string>
-#include <vector>
+#include <cstddef>
 
 #include "BaseSelector.hpp"
 
 namespace ms::ui {
 
 struct StringListSelectorProps {
-    const std::vector<std::string>* items = nullptr;
+    const char* const* items = nullptr;
+    size_t itemCount = 0;
     int selectedIndex = 0;
     bool visible = false;
 };
@@ -34,7 +34,7 @@ public:
     void invalidateItems();
 
 private:
-    const std::vector<std::string>* items_ref_ = nullptr;
+    const char* const* items_ref_ = nullptr;
     size_t items_size_ = 0;
 };
 
