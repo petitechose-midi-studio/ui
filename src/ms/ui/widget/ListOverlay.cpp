@@ -153,7 +153,7 @@ FLASHMEM void ListOverlay::createOverlay() {
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_FLOATING);
     style::apply(overlay_)
         .fullSize()
-        .bgColor(base_theme::color::BACKGROUND, base_theme::opacity::OPA_90)
+        .bgColor(base_theme::color::BACKGROUND, LV_OPA_COVER)
         .noScroll();
     lv_obj_align(overlay_, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_border_width(overlay_, 0, LV_STATE_DEFAULT);

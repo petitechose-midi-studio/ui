@@ -10,11 +10,11 @@ using namespace oc::ui::lvgl;
 namespace style = oc::ui::lvgl::style;
 
 namespace {
-constexpr uint8_t OVERLAY_BG_OPACITY = 230;  // ~90% opacity
+constexpr lv_opa_t OVERLAY_BG_OPACITY = LV_OPA_COVER;
 }
 
 FLASHMEM LayoutOverlay::LayoutOverlay(lv_obj_t* parent) : parent_(parent) {
-    // Fullscreen overlay with semi-transparent background
+    // Fullscreen overlay with opaque background
     overlay_ = lv_obj_create(parent_);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_FLOATING);
     style::apply(overlay_)
