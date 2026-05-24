@@ -5,8 +5,8 @@
  * @brief Stateless key/value overlay using VirtualList (render(props))
  */
 
-#include <string>
-#include <vector>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include <lvgl.h>
@@ -48,30 +48,48 @@ public:
     lv_obj_t* getElement() const { return overlay_.getElement(); }
 
 private:
+    static constexpr int VISIBLE_SLOTS = 5;
+    static constexpr int MAX_ROWS = 16;
+    static constexpr size_t TEXT_CACHE_SIZE = 48;
+
+    struct TextCache {
+        char text[TEXT_CACHE_SIZE] = {};
+    };
+
+    struct RowCache {
+        TextCache key;
+        TextCache value;
+    };
+
     struct SlotWidgets {
         bool created = false;
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
         bool highlighted = false;
+        bool highlightStyleApplied = false;
         int boundIndex = -1;
-        std::string keyCache;
-        std::string valueCache;
+        TextCache keyCache;
+        TextCache valueCache;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
-    void syncRows(const VirtualListKeyValueOverlayProps& props, std::vector<int>& dirtyIndices);
-    void invalidateDirtyRows(const std::vector<int>& dirtyIndices);
-    static void setLabelTextIfChanged(lv_obj_t* label, std::string& cache, const std::string& text);
+    void syncRows(const VirtualListKeyValueOverlayProps& props,
+                  std::array<int, MAX_ROWS>& dirtyIndices,
+                  int& dirtyCount);
+    void invalidateDirtyRows(const std::array<int, MAX_ROWS>& dirtyIndices, int dirtyCount);
+    static bool copyTextIfChanged(TextCache& cache, const char* text);
+    static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
 
     VirtualListOverlay overlay_;
-    std::vector<SlotWidgets> slot_widgets_;
-    std::vector<std::pair<std::string, std::string>> rows_;
+    std::array<SlotWidgets, VISIBLE_SLOTS> slot_widgets_{};
+    std::array<RowCache, MAX_ROWS> rows_{};
 
     uint32_t last_data_revision_ = 0;
     int last_row_count_ = 0;
+    int row_count_ = 0;
 };
 
 }  // namespace ms::ui

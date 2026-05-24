@@ -1,6 +1,7 @@
 #include "VirtualListKeyValueOverlay.hpp"
 
 #include <algorithm>
+#include <cstring>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
@@ -14,7 +15,6 @@ using namespace oc::ui::lvgl;
 namespace style = oc::ui::lvgl::style;
 
 namespace {
-constexpr int VISIBLE_SLOTS = 5;
 constexpr int ITEM_HEIGHT = 32;
 
 constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
@@ -36,66 +36,80 @@ FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent
                 updateSlotHighlight(slot, isSelected);
             });
     }
-
-    slot_widgets_.resize(VISIBLE_SLOTS);
 }
 
 FLASHMEM VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
+FLASHMEM bool VirtualListKeyValueOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
+    const char* source = text ? text : "";
+    char next[TEXT_CACHE_SIZE] = {};
+    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
+    next[TEXT_CACHE_SIZE - 1] = '\0';
+
+    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
+
+    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
+    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
+    return true;
+}
+
 FLASHMEM void VirtualListKeyValueOverlay::setLabelTextIfChanged(
     lv_obj_t* label,
-    std::string& cache,
-    const std::string& text
+    TextCache& cache,
+    const char* text
 ) {
     if (!label) return;
-    if (cache == text) return;
+    if (!copyTextIfChanged(cache, text)) return;
 
-    cache = text;
-    lv_label_set_text(label, cache.c_str());
+    lv_label_set_text(label, cache.text);
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::syncRows(
     const VirtualListKeyValueOverlayProps& props,
-    std::vector<int>& dirtyIndices
+    std::array<int, MAX_ROWS>& dirtyIndices,
+    int& dirtyCount
 ) {
+    dirtyCount = 0;
+    const int nextCount = std::clamp(props.rowCount, 0, MAX_ROWS);
     const bool canSkipRowDiff =
         (props.dataRevision != 0) &&
         (props.dataRevision == last_data_revision_) &&
-        (props.rowCount == last_row_count_);
+        (nextCount == last_row_count_);
 
     if (canSkipRowDiff) return;
 
-    const size_t nextCount = static_cast<size_t>(std::max(0, props.rowCount));
-    if (rows_.size() != nextCount) {
-        rows_.assign(nextCount, {"", ""});
-        dirtyIndices.reserve(nextCount);
-    }
-
-    for (int i = 0; i < props.rowCount; ++i) {
+    for (int i = 0; i < nextCount; ++i) {
         const auto* row = props.rows ? &props.rows[i] : nullptr;
-        const std::string nextKey = (row && row->key) ? row->key : "";
-        const std::string nextValue = (row && row->value) ? row->value : "";
-
         auto& current = rows_[static_cast<size_t>(i)];
-        if (current.first != nextKey || current.second != nextValue) {
-            current.first = nextKey;
-            current.second = nextValue;
-            dirtyIndices.push_back(i);
+        const bool keyChanged = copyTextIfChanged(current.key, row ? row->key : "");
+        const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
+        if ((keyChanged || valueChanged) && dirtyCount < MAX_ROWS) {
+            dirtyIndices[static_cast<size_t>(dirtyCount++)] = i;
         }
     }
 
+    for (int i = nextCount; i < row_count_; ++i) {
+        auto& current = rows_[static_cast<size_t>(i)];
+        copyTextIfChanged(current.key, "");
+        copyTextIfChanged(current.value, "");
+    }
+
     last_data_revision_ = props.dataRevision;
-    last_row_count_ = props.rowCount;
+    last_row_count_ = nextCount;
+    row_count_ = nextCount;
 }
 
-FLASHMEM void VirtualListKeyValueOverlay::invalidateDirtyRows(const std::vector<int>& dirtyIndices) {
+FLASHMEM void VirtualListKeyValueOverlay::invalidateDirtyRows(
+    const std::array<int, MAX_ROWS>& dirtyIndices,
+    int dirtyCount
+) {
     auto* list = overlay_.list();
-    if (!list || dirtyIndices.empty()) return;
+    if (!list || dirtyCount <= 0) return;
 
-    for (int index : dirtyIndices) {
-        list->invalidateIndex(index);
+    for (int i = 0; i < dirtyCount; ++i) {
+        list->invalidateIndex(dirtyIndices[static_cast<size_t>(i)]);
     }
 }
 
@@ -108,16 +122,17 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
 
-    std::vector<int> dirtyIndices;
-    syncRows(props, dirtyIndices);
+    std::array<int, MAX_ROWS> dirtyIndices{};
+    int dirtyCount = 0;
+    syncRows(props, dirtyIndices, dirtyCount);
 
     auto* list = overlay_.list();
     if (list) {
-        const bool countChanged = list->setTotalCount(static_cast<int>(rows_.size()));
+        const bool countChanged = list->setTotalCount(row_count_);
         list->setSelectedIndex(props.selectedIndex);
 
         if (!countChanged && overlay_.isVisible()) {
-            invalidateDirtyRows(dirtyIndices);
+            invalidateDirtyRows(dirtyIndices, dirtyCount);
         }
     }
 
@@ -132,7 +147,7 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
 
     const int slotIndex = index - list->getWindowStart();
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
-    if (index < 0 || index >= static_cast<int>(rows_.size())) return;
+    if (index < 0 || index >= row_count_) return;
 
     ensureSlotWidgets(slot, slotIndex);
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
@@ -141,14 +156,14 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
         setLabelTextIfChanged(
             widgets.keyLabel,
             widgets.keyCache,
-            rows_[static_cast<size_t>(index)].first
+            rows_[static_cast<size_t>(index)].key.text
         );
     }
     if (widgets.valueLabel) {
         setLabelTextIfChanged(
             widgets.valueLabel,
             widgets.valueCache,
-            rows_[static_cast<size_t>(index)].second
+            rows_[static_cast<size_t>(index)].value.text
         );
     }
 
@@ -200,7 +215,7 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot&
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
-    if (widgets.highlighted == isSelected) return;
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
 
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
@@ -212,6 +227,7 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
     }
 
     widgets.highlighted = isSelected;
+    widgets.highlightStyleApplied = true;
 }
 
 }  // namespace ms::ui
