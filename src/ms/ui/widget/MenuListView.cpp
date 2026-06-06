@@ -6,10 +6,6 @@
 
 #include <config/PlatformCompat.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    #include <oc/log/Log.hpp>
-    #include <oc/time/Time.hpp>
-#endif
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
@@ -27,177 +23,10 @@ constexpr lv_coord_t HEADER_PAD_RIGHT = 8;
 constexpr lv_coord_t ROW_PAD_LEFT = 16;
 constexpr lv_coord_t ROW_PAD_RIGHT = 16;
 constexpr lv_coord_t VALUE_COL_W = 106;
+constexpr lv_coord_t DESCRIPTION_LABEL_COL_W = 136;
+constexpr lv_coord_t DESCRIPTION_VALUE_COL_W = 144;
 constexpr lv_coord_t COL_GAP = base_theme::layout::SPACE_MD;
-
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-constexpr uint32_t MENU_LIST_PERF_WINDOW_PASSES = 8;
-constexpr uint32_t MENU_LIST_PERF_SLOW_TOTAL_US = 1500;
-
-uint32_t menuListPerfMicros() {
-    return oc::time::isMicrosConfigured() ? oc::time::micros32() : 0;
-}
-
-struct MenuListPerfCallbacks {
-    uint32_t binds = 0;
-    uint32_t highlights = 0;
-};
-
-struct MenuListPerfWindow {
-    uint32_t pass_count = 0;
-    uint64_t total_us = 0;
-    uint64_t header_us = 0;
-    uint64_t sync_us = 0;
-    uint64_t count_us = 0;
-    uint64_t select_us = 0;
-    uint64_t invalidate_us = 0;
-    uint32_t max_total_us = 0;
-    uint32_t max_header_us = 0;
-    uint32_t max_sync_us = 0;
-    uint32_t max_count_us = 0;
-    uint32_t max_select_us = 0;
-    uint32_t max_invalidate_us = 0;
-    uint32_t bind_count = 0;
-    uint32_t highlight_count = 0;
-    uint32_t dirty_row_count = 0;
-    uint32_t count_change_count = 0;
-    int last_row_count = 0;
-    int last_selected_index = 0;
-    uint32_t last_data_revision = 0;
-
-    static uint32_t avg(uint64_t total, uint32_t count) {
-        return count > 0 ? static_cast<uint32_t>(total / count) : 0;
-    }
-
-    static uint32_t maxOf(uint32_t current, uint32_t next) {
-        return next > current ? next : current;
-    }
-
-    void reset() {
-        pass_count = 0;
-        total_us = 0;
-        header_us = 0;
-        sync_us = 0;
-        count_us = 0;
-        select_us = 0;
-        invalidate_us = 0;
-        max_total_us = 0;
-        max_header_us = 0;
-        max_sync_us = 0;
-        max_count_us = 0;
-        max_select_us = 0;
-        max_invalidate_us = 0;
-        bind_count = 0;
-        highlight_count = 0;
-        dirty_row_count = 0;
-        count_change_count = 0;
-    }
-
-    void record(
-        uint32_t total,
-        uint32_t header,
-        uint32_t sync,
-        uint32_t count,
-        uint32_t select,
-        uint32_t invalidate,
-        uint32_t binds,
-        uint32_t highlights,
-        uint32_t dirtyRows,
-        bool countChanged,
-        int rowCount,
-        int selectedIndex,
-        uint32_t dataRevision
-    ) {
-        pass_count += 1;
-        total_us += total;
-        header_us += header;
-        sync_us += sync;
-        count_us += count;
-        select_us += select;
-        invalidate_us += invalidate;
-        max_total_us = maxOf(max_total_us, total);
-        max_header_us = maxOf(max_header_us, header);
-        max_sync_us = maxOf(max_sync_us, sync);
-        max_count_us = maxOf(max_count_us, count);
-        max_select_us = maxOf(max_select_us, select);
-        max_invalidate_us = maxOf(max_invalidate_us, invalidate);
-        bind_count += binds;
-        highlight_count += highlights;
-        dirty_row_count += dirtyRows;
-        count_change_count += countChanged ? 1 : 0;
-        last_row_count = rowCount;
-        last_selected_index = selectedIndex;
-        last_data_revision = dataRevision;
-
-        const bool slow = total >= MENU_LIST_PERF_SLOW_TOTAL_US;
-        const bool active = binds > 0 || highlights > 0 || dirtyRows > 0 || countChanged;
-        if (!slow && pass_count < MENU_LIST_PERF_WINDOW_PASSES) return;
-        if (!slow && !active && bind_count == 0 && highlight_count == 0 && dirty_row_count == 0 && count_change_count == 0) {
-            reset();
-            return;
-        }
-
-        OC_LOG_INFO(
-            "[Perf][MenuList] passes={} avg={}us max={}us header={}/{}us sync={}/{}us count={}/{}us select={}/{}us inv={}/{}us binds={} highlights={} dirty={} countChanges={} rows={} sel={} rev={}",
-            pass_count,
-            avg(total_us, pass_count),
-            max_total_us,
-            avg(header_us, pass_count),
-            max_header_us,
-            avg(sync_us, pass_count),
-            max_sync_us,
-            avg(count_us, pass_count),
-            max_count_us,
-            avg(select_us, pass_count),
-            max_select_us,
-            avg(invalidate_us, pass_count),
-            max_invalidate_us,
-            bind_count,
-            highlight_count,
-            dirty_row_count,
-            count_change_count,
-            last_row_count,
-            last_selected_index,
-            last_data_revision
-        );
-        reset();
-    }
-};
-
-MenuListPerfCallbacks g_menu_list_perf_callbacks;
-MenuListPerfWindow g_menu_list_perf;
-
-void recordMenuListPerf(
-    uint32_t total,
-    uint32_t header,
-    uint32_t sync,
-    uint32_t count,
-    uint32_t select,
-    uint32_t invalidate,
-    uint32_t binds,
-    uint32_t highlights,
-    uint32_t dirtyRows,
-    bool countChanged,
-    int rowCount,
-    int selectedIndex,
-    uint32_t dataRevision
-) {
-    g_menu_list_perf.record(
-        total,
-        header,
-        sync,
-        count,
-        select,
-        invalidate,
-        binds,
-        highlights,
-        dirtyRows,
-        countChanged,
-        rowCount,
-        selectedIndex,
-        dataRevision
-    );
-}
-#endif
+constexpr uint32_t DESCRIPTION_VALUE_COLOR = 0x8A8A8A;
 
 uint32_t valueColorFor(MenuRowKind kind) {
     switch (kind) {
@@ -254,6 +83,16 @@ FLASHMEM void MenuListView::setLabelTextIfChanged(
     lv_label_set_text(label, cache.text);
 }
 
+FLASHMEM void MenuListView::setLabelTextIfChanged(
+    oc::ui::lvgl::Label* label,
+    TextCache& cache,
+    const char* text
+) {
+    if (!label) return;
+    if (!copyTextIfChanged(cache, text)) return;
+    label->setText(cache.text);
+}
+
 FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
     if (!parent) return;
 
@@ -289,12 +128,14 @@ FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
     lv_obj_set_style_pad_column(header_, 12, 0);
 
     title_ = lv_label_create(header_);
+    lv_label_set_text(title_, "");
     lv_obj_set_style_text_font(title_, fonts.inter_14_bold, 0);
     lv_obj_set_style_text_color(title_, lv_color_hex(base_theme::color::TEXT_PRIMARY), 0);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_CLIP);
-    lv_obj_set_width(title_, 84);
+    lv_obj_set_width(title_, 132);
 
     meta_ = lv_label_create(header_);
+    lv_label_set_text(meta_, "");
     lv_obj_set_flex_grow(meta_, 1);
     lv_obj_set_style_text_font(meta_, fonts.inter_12_medium, 0);
     lv_obj_set_style_text_color(meta_, lv_color_hex(base_theme::color::TEXT_SECONDARY), 0);
@@ -348,13 +189,20 @@ FLASHMEM void MenuListView::syncRows(
         auto& current = rows_[static_cast<std::size_t>(i)];
         const MenuRowKind nextKind = row ? row->kind : MenuRowKind::Value;
         const bool nextEnabled = row ? row->enabled : true;
+        const bool nextValueAutoScroll = row ? row->valueAutoScroll : false;
+        const MenuRowValueRole nextValueRole = row ? row->valueRole : MenuRowValueRole::Value;
         const bool labelChanged = copyTextIfChanged(current.label, row ? row->label : "");
         const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
         const bool kindChanged = current.kind != nextKind;
         const bool enabledChanged = current.enabled != nextEnabled;
+        const bool valueAutoScrollChanged = current.valueAutoScroll != nextValueAutoScroll;
+        const bool valueRoleChanged = current.valueRole != nextValueRole;
         current.kind = nextKind;
         current.enabled = nextEnabled;
-        if ((labelChanged || valueChanged || kindChanged || enabledChanged) &&
+        current.valueAutoScroll = nextValueAutoScroll;
+        current.valueRole = nextValueRole;
+        if ((labelChanged || valueChanged || kindChanged || enabledChanged ||
+             valueAutoScrollChanged || valueRoleChanged) &&
             dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<std::size_t>(dirtyCount++)] = i;
         }
@@ -366,6 +214,8 @@ FLASHMEM void MenuListView::syncRows(
         copyTextIfChanged(current.value, "");
         current.kind = MenuRowKind::Value;
         current.enabled = true;
+        current.valueAutoScroll = false;
+        current.valueRole = MenuRowValueRole::Value;
     }
 
     last_data_revision_ = props.dataRevision;
@@ -387,70 +237,20 @@ FLASHMEM void MenuListView::invalidateDirtyRows(
 FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
     if (!container_) return;
 
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    const uint32_t total_start_us = menuListPerfMicros();
-    const uint32_t binds_before = g_menu_list_perf_callbacks.binds;
-    const uint32_t highlights_before = g_menu_list_perf_callbacks.highlights;
-    const uint32_t header_start_us = total_start_us;
-#endif
     setLabelTextIfChanged(title_, title_cache_, props.title);
     setLabelTextIfChanged(meta_, meta_cache_, props.meta);
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    const uint32_t header_us = menuListPerfMicros() - header_start_us;
-#endif
 
     std::array<int, MAX_ROWS> dirtyIndices{};
     int dirtyCount = 0;
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    const uint32_t sync_start_us = menuListPerfMicros();
-#endif
     syncRows(props, dirtyIndices, dirtyCount);
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    const uint32_t sync_us = menuListPerfMicros() - sync_start_us;
-    uint32_t count_us = 0;
-    uint32_t select_us = 0;
-    uint32_t invalidate_us = 0;
-    bool countChanged = false;
-#endif
 
     if (list_) {
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-        const uint32_t count_start_us = menuListPerfMicros();
-        countChanged = list_->setTotalCount(row_count_);
-        count_us = menuListPerfMicros() - count_start_us;
-        const uint32_t select_start_us = menuListPerfMicros();
-#else
         const bool countChanged = list_->setTotalCount(row_count_);
-#endif
         list_->setSelectedIndex(props.selectedIndex);
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-        select_us = menuListPerfMicros() - select_start_us;
-        const uint32_t invalidate_start_us = menuListPerfMicros();
-#endif
         if (!countChanged && list_->isVisible()) {
             invalidateDirtyRows(dirtyIndices, dirtyCount);
         }
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-        invalidate_us = menuListPerfMicros() - invalidate_start_us;
-#endif
     }
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    recordMenuListPerf(
-        menuListPerfMicros() - total_start_us,
-        header_us,
-        sync_us,
-        count_us,
-        select_us,
-        invalidate_us,
-        g_menu_list_perf_callbacks.binds - binds_before,
-        g_menu_list_perf_callbacks.highlights - highlights_before,
-        static_cast<uint32_t>(dirtyCount),
-        countChanged,
-        row_count_,
-        props.selectedIndex,
-        props.dataRevision
-    );
-#endif
 }
 
 FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
@@ -459,16 +259,37 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
     const int slotIndex = index - list_->getWindowStart();
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
     if (index < 0 || index >= row_count_) return;
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    g_menu_list_perf_callbacks.binds += 1;
-#endif
 
     ensureSlotWidgets(slot, slotIndex);
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(index)];
 
+    applyValueLayout(widgets, row.valueRole);
     setLabelTextIfChanged(widgets.label, widgets.labelCache, row.label.text);
-    setLabelTextIfChanged(widgets.value, widgets.valueCache, row.value.text);
+    if (row.valueAutoScroll) {
+        ensureValueScroller(widgets, row.valueRole);
+        if (widgets.value) {
+            lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (widgets.valueScroller) {
+            lv_obj_clear_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
+        }
+        setLabelTextIfChanged(widgets.valueScroller.get(), widgets.valueScrollerCache, row.value.text);
+    } else {
+        if (widgets.valueScroller) {
+            if (widgets.valueScrollerActive) {
+                widgets.valueScroller->autoScroll(false);
+                widgets.valueScroller->setText("");
+                widgets.valueScrollerActive = false;
+                widgets.valueScrollerCache = {};
+            }
+            lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
+        }
+        if (widgets.value) {
+            lv_obj_clear_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+        }
+        setLabelTextIfChanged(widgets.value, widgets.valueCache, row.value.text);
+    }
     applyRowStyle(widgets, row);
 
     widgets.boundIndex = index;
@@ -481,9 +302,6 @@ FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool 
     const int slotIndex = slot.boundIndex - list_->getWindowStart();
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
     if (slot.boundIndex < 0 || slot.boundIndex >= row_count_) return;
-#if defined(MS_PROJECT_VIEW_PERF_LOG)
-    g_menu_list_perf_callbacks.highlights += 1;
-#endif
 
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(slot.boundIndex)];
@@ -502,17 +320,67 @@ FLASHMEM void MenuListView::ensureSlotWidgets(widget::VirtualSlot& slot, int slo
     lv_obj_set_style_pad_column(row, COL_GAP, 0);
 
     widgets.label = lv_label_create(row);
+    lv_label_set_text(widgets.label, "");
     lv_obj_set_flex_grow(widgets.label, 1);
     lv_label_set_long_mode(widgets.label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, 0);
 
     widgets.value = lv_label_create(row);
+    lv_label_set_text(widgets.value, "");
     lv_obj_set_width(widgets.value, VALUE_COL_W);
     lv_obj_set_style_text_align(widgets.value, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_long_mode(widgets.value, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.value, fonts.inter_14_semibold, 0);
 
     widgets.created = true;
+}
+
+FLASHMEM void MenuListView::ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role) {
+    if (widgets.valueScroller) {
+        applyValueLayout(widgets, role);
+        return;
+    }
+
+    lv_obj_t* parent = widgets.value ? lv_obj_get_parent(widgets.value) : nullptr;
+    if (!parent) return;
+
+    widgets.valueScroller = std::make_unique<Label>(parent);
+    widgets.valueScroller->font(fonts.inter_14_semibold)
+        .autoScroll(false)
+        .ownsLvglObjects(false);
+    lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
+    widgets.valueLayoutApplied = false;
+    applyValueLayout(widgets, role);
+}
+
+FLASHMEM void MenuListView::applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role) {
+    if (widgets.valueLayoutApplied && widgets.valueRole == role) return;
+
+    const bool description = role == MenuRowValueRole::Description;
+    if (widgets.label) {
+        if (description) {
+            lv_obj_set_flex_grow(widgets.label, 0);
+            lv_obj_set_width(widgets.label, DESCRIPTION_LABEL_COL_W);
+        } else {
+            lv_obj_set_width(widgets.label, 0);
+            lv_obj_set_flex_grow(widgets.label, 1);
+        }
+    }
+    if (widgets.value) {
+        lv_obj_set_width(widgets.value, description ? DESCRIPTION_VALUE_COL_W : VALUE_COL_W);
+        lv_obj_set_style_text_align(
+            widgets.value,
+            description ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_RIGHT,
+            0
+        );
+    }
+    if (widgets.valueScroller) {
+        widgets.valueScroller->width(description ? DESCRIPTION_VALUE_COL_W : VALUE_COL_W)
+            .alignment(description ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_RIGHT);
+    }
+
+    widgets.valueRole = role;
+    widgets.valueLayoutApplied = true;
 }
 
 FLASHMEM void MenuListView::applyHighlightStyle(
@@ -522,21 +390,34 @@ FLASHMEM void MenuListView::applyHighlightStyle(
     const RowCache& row
 ) {
     (void)slot;
-    (void)row;
-    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
+    const bool shouldScroll = row.valueAutoScroll && isSelected;
+    if (widgets.highlightStyleApplied &&
+        widgets.highlighted == isSelected &&
+        widgets.valueScrollerActive == shouldScroll) {
+        return;
+    }
 
     widgets.highlighted = isSelected;
     widgets.highlightStyleApplied = true;
+
+    if (widgets.valueScroller && widgets.valueScrollerActive != shouldScroll) {
+        widgets.valueScroller->autoScroll(shouldScroll);
+        widgets.valueScroller->setText(widgets.valueScrollerCache.text);
+        widgets.valueScrollerActive = shouldScroll;
+    }
 }
 
 FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& row) {
     const bool enabled = row.enabled && row.kind != MenuRowKind::Disabled;
+    const bool description = row.valueRole == MenuRowValueRole::Description;
     const uint32_t labelColor = enabled ? base_theme::color::TEXT_PRIMARY
                                         : base_theme::color::INACTIVE_LIGHTER;
-    const uint32_t valueColor = enabled ? valueColorFor(row.kind)
+    const uint32_t valueColor = enabled ? (description ? DESCRIPTION_VALUE_COLOR
+                                                       : valueColorFor(row.kind))
                                         : base_theme::color::INACTIVE_LIGHTER;
     const lv_opa_t labelOpa = enabled ? LV_OPA_80 : LV_OPA_60;
-    const lv_opa_t valueOpa = enabled ? LV_OPA_80 : LV_OPA_50;
+    const lv_opa_t valueOpa = enabled ? (description ? LV_OPA_70 : LV_OPA_80)
+                                      : LV_OPA_50;
 
     if (!widgets.rowStyleApplied || widgets.labelColor != labelColor) {
         if (widgets.label) {
@@ -547,6 +428,9 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
     if (!widgets.rowStyleApplied || widgets.valueColor != valueColor) {
         if (widgets.value) {
             lv_obj_set_style_text_color(widgets.value, lv_color_hex(valueColor), 0);
+        }
+        if (widgets.valueScroller) {
+            lv_obj_set_style_text_color(widgets.valueScroller->getLabel(), lv_color_hex(valueColor), 0);
         }
         widgets.valueColor = valueColor;
     }
@@ -559,6 +443,9 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
     if (!widgets.rowStyleApplied || widgets.valueOpa != valueOpa) {
         if (widgets.value) {
             lv_obj_set_style_text_opa(widgets.value, valueOpa, 0);
+        }
+        if (widgets.valueScroller) {
+            lv_obj_set_style_text_opa(widgets.valueScroller->getLabel(), valueOpa, 0);
         }
         widgets.valueOpa = valueOpa;
     }

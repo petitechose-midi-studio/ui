@@ -12,6 +12,7 @@
 
 #include <lvgl.h>
 
+#include <oc/ui/lvgl/widget/Label.hpp>
 #include <oc/ui/lvgl/widget/VirtualList.hpp>
 
 namespace ms::ui {
@@ -24,11 +25,18 @@ enum class MenuRowKind : uint8_t {
     Disabled,
 };
 
+enum class MenuRowValueRole : uint8_t {
+    Value = 0,
+    Description,
+};
+
 struct MenuRow {
     const char* label = "";
     const char* value = "";
     MenuRowKind kind = MenuRowKind::Value;
     bool enabled = true;
+    bool valueAutoScroll = false;
+    MenuRowValueRole valueRole = MenuRowValueRole::Value;
 };
 
 struct MenuListViewProps {
@@ -68,15 +76,21 @@ private:
         TextCache value;
         MenuRowKind kind = MenuRowKind::Value;
         bool enabled = true;
+        bool valueAutoScroll = false;
+        MenuRowValueRole valueRole = MenuRowValueRole::Value;
     };
 
     struct SlotWidgets {
         bool created = false;
         lv_obj_t* label = nullptr;
         lv_obj_t* value = nullptr;
+        std::unique_ptr<oc::ui::lvgl::Label> valueScroller;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         bool rowStyleApplied = false;
+        bool valueLayoutApplied = false;
+        bool valueScrollerActive = false;
+        MenuRowValueRole valueRole = MenuRowValueRole::Value;
         uint32_t labelColor = 0;
         uint32_t valueColor = 0;
         lv_opa_t labelOpa = LV_OPA_TRANSP;
@@ -84,16 +98,19 @@ private:
         int boundIndex = -1;
         TextCache labelCache;
         TextCache valueCache;
+        TextCache valueScrollerCache;
     };
 
     void createUi(lv_obj_t* parent);
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
+    void ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role);
     void applyHighlightStyle(oc::ui::lvgl::widget::VirtualSlot& slot,
                              SlotWidgets& widgets,
                              bool isSelected,
                              const RowCache& row);
+    void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role);
     void applyRowStyle(SlotWidgets& widgets, const RowCache& row);
     void syncRows(const MenuListViewProps& props,
                   std::array<int, MAX_ROWS>& dirtyIndices,
@@ -101,6 +118,7 @@ private:
     void invalidateDirtyRows(const std::array<int, MAX_ROWS>& dirtyIndices, int dirtyCount);
     static bool copyTextIfChanged(TextCache& cache, const char* text);
     static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
+    static void setLabelTextIfChanged(oc::ui::lvgl::Label* label, TextCache& cache, const char* text);
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* header_ = nullptr;
