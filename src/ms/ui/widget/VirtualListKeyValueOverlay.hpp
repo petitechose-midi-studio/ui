@@ -20,6 +20,9 @@ namespace ms::ui {
 struct KeyValueRow {
     const char* key = "";
     const char* value = "";
+    const char* icon = "";
+    const lv_font_t* iconFont = nullptr;
+    uint32_t iconColor = 0;
 };
 
 struct VirtualListKeyValueOverlayProps {
@@ -59,17 +62,24 @@ private:
     struct RowCache {
         TextCache key;
         TextCache value;
+        TextCache icon;
+        const lv_font_t* iconFont = nullptr;
+        uint32_t iconColor = 0;
     };
 
     struct SlotWidgets {
         bool created = false;
+        lv_obj_t* iconLabel = nullptr;
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         int boundIndex = -1;
+        TextCache iconCache;
         TextCache keyCache;
         TextCache valueCache;
+        const lv_font_t* iconFont = nullptr;
+        uint32_t iconColor = 0;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);

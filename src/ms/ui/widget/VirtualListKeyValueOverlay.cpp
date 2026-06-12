@@ -19,6 +19,7 @@ constexpr int ITEM_HEIGHT = 32;
 
 constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
 constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
+constexpr int ICON_COL_W = 16;
 constexpr int VALUE_COL_W = 110; // stable alignment for values
 }
 
@@ -85,7 +86,13 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         auto& current = rows_[static_cast<size_t>(i)];
         const bool keyChanged = copyTextIfChanged(current.key, row ? row->key : "");
         const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
-        if ((keyChanged || valueChanged) && dirtyCount < MAX_ROWS) {
+        const bool iconChanged = copyTextIfChanged(current.icon, row ? row->icon : "");
+        const bool iconStyleChanged =
+            current.iconFont != (row ? row->iconFont : nullptr) ||
+            current.iconColor != (row ? row->iconColor : 0U);
+        current.iconFont = row ? row->iconFont : nullptr;
+        current.iconColor = row ? row->iconColor : 0U;
+        if ((keyChanged || valueChanged || iconChanged || iconStyleChanged) && dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<size_t>(dirtyCount++)] = i;
         }
     }
@@ -94,6 +101,9 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         auto& current = rows_[static_cast<size_t>(i)];
         copyTextIfChanged(current.key, "");
         copyTextIfChanged(current.value, "");
+        copyTextIfChanged(current.icon, "");
+        current.iconFont = nullptr;
+        current.iconColor = 0;
     }
 
     last_data_revision_ = props.dataRevision;
@@ -151,19 +161,37 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
 
     ensureSlotWidgets(slot, slotIndex);
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
+    const auto& row = rows_[static_cast<size_t>(index)];
+
+    if (widgets.iconLabel) {
+        const bool hasIcon = row.icon.text[0] != '\0' && row.iconFont != nullptr;
+        setLabelTextIfChanged(widgets.iconLabel, widgets.iconCache, hasIcon ? row.icon.text : "");
+        if (hasIcon && widgets.iconFont != row.iconFont) {
+            lv_obj_set_style_text_font(widgets.iconLabel, row.iconFont, LV_STATE_DEFAULT);
+            widgets.iconFont = row.iconFont;
+        }
+        if (hasIcon && widgets.iconColor != row.iconColor) {
+            lv_obj_set_style_text_color(widgets.iconLabel, lv_color_hex(row.iconColor), LV_STATE_DEFAULT);
+            widgets.iconColor = row.iconColor;
+        }
+        if (!hasIcon) {
+            widgets.iconFont = nullptr;
+            widgets.iconColor = 0;
+        }
+    }
 
     if (widgets.keyLabel) {
         setLabelTextIfChanged(
             widgets.keyLabel,
             widgets.keyCache,
-            rows_[static_cast<size_t>(index)].key.text
+            row.key.text
         );
     }
     if (widgets.valueLabel) {
         setLabelTextIfChanged(
             widgets.valueLabel,
             widgets.valueCache,
-            rows_[static_cast<size_t>(index)].value.text
+            row.value.text
         );
     }
 
@@ -193,6 +221,12 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot&
     lv_obj_set_style_pad_right(container, PAD_H, LV_STATE_DEFAULT);
     lv_obj_set_style_pad_column(container, COL_GAP, LV_STATE_DEFAULT);
 
+    widgets.iconLabel = lv_label_create(container);
+    lv_obj_set_width(widgets.iconLabel, ICON_COL_W);
+    lv_obj_set_style_text_align(widgets.iconLabel, LV_TEXT_ALIGN_CENTER, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widgets.iconLabel, LV_LABEL_LONG_DOT);
+    lv_label_set_text(widgets.iconLabel, "");
+
     widgets.keyLabel = lv_label_create(container);
     lv_obj_set_flex_grow(widgets.keyLabel, 1);
     lv_label_set_long_mode(widgets.keyLabel, LV_LABEL_LONG_DOT);
@@ -217,6 +251,13 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot&
 FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
     if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
 
+    if (widgets.iconLabel) {
+        lv_obj_set_style_text_opa(
+            widgets.iconLabel,
+            isSelected ? LV_OPA_COVER : LV_OPA_70,
+            LV_STATE_DEFAULT
+        );
+    }
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
             isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
