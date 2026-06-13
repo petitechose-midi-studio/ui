@@ -1,5 +1,7 @@
 #include "VirtualListSelectorOverlay.hpp"
 
+#include <cstring>
+
 #include <config/PlatformCompat.hpp>
 #include <oc/type/TextFormat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
@@ -41,6 +43,29 @@ FLASHMEM VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent
 
 FLASHMEM VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
+}
+
+FLASHMEM bool VirtualListSelectorOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
+    const char* source = text ? text : "";
+    char next[TEXT_CACHE_SIZE] = {};
+    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
+    next[TEXT_CACHE_SIZE - 1] = '\0';
+
+    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
+
+    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
+    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
+    return true;
+}
+
+FLASHMEM void VirtualListSelectorOverlay::setLabelTextIfChanged(
+    lv_obj_t* label,
+    TextCache& cache,
+    const char* text
+) {
+    if (!label) return;
+    if (!copyTextIfChanged(cache, text)) return;
+    lv_label_set_text(label, cache.text);
 }
 
 FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverlayProps& props) {
@@ -103,20 +128,26 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
         name = current_props_.items[index] ? current_props_.items[index] : "";
     }
     if (widgets.label) {
-        lv_label_set_text(widgets.label, name);
+        setLabelTextIfChanged(widgets.label, widgets.labelCache, name);
     }
 
     if (widgets.indexLabel) {
         char indexStr[12];
         oc::type::text::formatUnsigned(indexStr, sizeof(indexStr), static_cast<unsigned>(index + 1));
-        lv_label_set_text(widgets.indexLabel, indexStr);
-        if (current_props_.showIndexColumn) {
-            lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
+        setLabelTextIfChanged(widgets.indexLabel, widgets.indexCache, indexStr);
+
+        if (!widgets.indexVisibilityApplied || widgets.indexVisible != current_props_.showIndexColumn) {
+            if (current_props_.showIndexColumn) {
+                lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
+            }
+            widgets.indexVisible = current_props_.showIndexColumn;
+            widgets.indexVisibilityApplied = true;
         }
     }
 
+    widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
 }
 
@@ -161,6 +192,8 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(widget::VirtualSlot&
 }
 
 FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
+
     if (widgets.label) {
         style::apply(widgets.label).textColor(
             isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
@@ -169,6 +202,9 @@ FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widge
         style::apply(widgets.indexLabel).textColor(
             isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
     }
+
+    widgets.highlighted = isSelected;
+    widgets.highlightStyleApplied = true;
 }
 
 }  // namespace ms::ui
