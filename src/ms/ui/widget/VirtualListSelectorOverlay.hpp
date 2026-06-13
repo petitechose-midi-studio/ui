@@ -5,6 +5,7 @@
  * @brief Stateless VirtualList selector overlay (render(props))
  */
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -43,16 +44,31 @@ public:
     lv_obj_t* getElement() const { return overlay_.getElement(); }
 
 private:
+    static constexpr size_t TEXT_CACHE_SIZE = 48;
+
+    struct TextCache {
+        char text[TEXT_CACHE_SIZE] = {};
+    };
+
     struct SlotWidgets {
         bool created = false;
         lv_obj_t* indexLabel = nullptr;
         lv_obj_t* label = nullptr;
+        bool highlighted = false;
+        bool highlightStyleApplied = false;
+        bool indexVisible = true;
+        bool indexVisibilityApplied = false;
+        int boundIndex = -1;
+        TextCache indexCache;
+        TextCache labelCache;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
+    static bool copyTextIfChanged(TextCache& cache, const char* text);
+    static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
 
     VirtualListOverlay overlay_;
     std::vector<SlotWidgets> slot_widgets_;
