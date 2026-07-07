@@ -17,12 +17,21 @@
 
 namespace ms::ui {
 
+static constexpr size_t KEY_VALUE_SPARKLINE_SAMPLE_COUNT = 12;
+
+struct KeyValueSparkline {
+    bool enabled = false;
+    uint8_t sampleCount = 0;
+    std::array<uint8_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> samples{};
+};
+
 struct KeyValueRow {
     const char* key = "";
     const char* value = "";
     const char* icon = "";
     const lv_font_t* iconFont = nullptr;
     uint32_t iconColor = 0;
+    KeyValueSparkline sparkline{};
 };
 
 struct VirtualListKeyValueOverlayProps {
@@ -65,6 +74,7 @@ private:
         TextCache icon;
         const lv_font_t* iconFont = nullptr;
         uint32_t iconColor = 0;
+        KeyValueSparkline sparkline{};
     };
 
     struct SlotWidgets {
@@ -72,6 +82,7 @@ private:
         lv_obj_t* iconLabel = nullptr;
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
+        lv_obj_t* sparklineLine = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         int boundIndex = -1;
@@ -80,17 +91,21 @@ private:
         TextCache valueCache;
         const lv_font_t* iconFont = nullptr;
         uint32_t iconColor = 0;
+        bool sparklineVisible = false;
+        std::array<lv_point_precise_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> sparklinePoints{};
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
+    void applySparkline(SlotWidgets& widgets, const RowCache& row);
     void syncRows(const VirtualListKeyValueOverlayProps& props,
                   std::array<int, MAX_ROWS>& dirtyIndices,
                   int& dirtyCount);
     void invalidateDirtyRows(const std::array<int, MAX_ROWS>& dirtyIndices, int dirtyCount);
     static bool copyTextIfChanged(TextCache& cache, const char* text);
+    static bool copySparklineIfChanged(KeyValueSparkline& cache, const KeyValueSparkline& next);
     static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
 
     VirtualListOverlay overlay_;

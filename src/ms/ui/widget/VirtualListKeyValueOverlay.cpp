@@ -21,6 +21,7 @@ constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
 constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int ICON_COL_W = 16;
 constexpr int VALUE_COL_W = 110; // stable alignment for values
+constexpr int SPARKLINE_H = 18;
 }
 
 FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
@@ -54,6 +55,29 @@ FLASHMEM bool VirtualListKeyValueOverlay::copyTextIfChanged(TextCache& cache, co
     std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
     cache.text[TEXT_CACHE_SIZE - 1] = '\0';
     return true;
+}
+
+FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
+    KeyValueSparkline& cache,
+    const KeyValueSparkline& next
+) {
+    const uint8_t nextCount = next.enabled
+        ? static_cast<uint8_t>(std::min<size_t>(
+              next.sampleCount,
+              KEY_VALUE_SPARKLINE_SAMPLE_COUNT
+          ))
+        : 0U;
+    bool changed = cache.enabled != next.enabled || cache.sampleCount != nextCount;
+    for (size_t i = 0; i < KEY_VALUE_SPARKLINE_SAMPLE_COUNT; ++i) {
+        const uint8_t nextValue = i < nextCount ? next.samples[i] : 0U;
+        if (cache.samples[i] != nextValue) {
+            changed = true;
+            cache.samples[i] = nextValue;
+        }
+    }
+    cache.enabled = next.enabled && nextCount >= 2U;
+    cache.sampleCount = cache.enabled ? nextCount : 0U;
+    return changed;
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::setLabelTextIfChanged(
@@ -90,9 +114,14 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         const bool iconStyleChanged =
             current.iconFont != (row ? row->iconFont : nullptr) ||
             current.iconColor != (row ? row->iconColor : 0U);
+        const bool sparklineChanged = copySparklineIfChanged(
+            current.sparkline,
+            row ? row->sparkline : KeyValueSparkline{}
+        );
         current.iconFont = row ? row->iconFont : nullptr;
         current.iconColor = row ? row->iconColor : 0U;
-        if ((keyChanged || valueChanged || iconChanged || iconStyleChanged) && dirtyCount < MAX_ROWS) {
+        if ((keyChanged || valueChanged || iconChanged || iconStyleChanged || sparklineChanged) &&
+            dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<size_t>(dirtyCount++)] = i;
         }
     }
@@ -104,6 +133,7 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         copyTextIfChanged(current.icon, "");
         current.iconFont = nullptr;
         current.iconColor = 0;
+        copySparklineIfChanged(current.sparkline, KeyValueSparkline{});
     }
 
     last_data_revision_ = props.dataRevision;
@@ -188,12 +218,9 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
         );
     }
     if (widgets.valueLabel) {
-        setLabelTextIfChanged(
-            widgets.valueLabel,
-            widgets.valueCache,
-            row.value.text
-        );
+        setLabelTextIfChanged(widgets.valueLabel, widgets.valueCache, row.value.text);
     }
+    applySparkline(widgets, row);
 
     widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
@@ -245,7 +272,58 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot&
         lv_obj_set_style_text_font(widgets.valueLabel, fonts.list_item_label, LV_STATE_DEFAULT);
     }
 
+    widgets.sparklineLine = lv_line_create(container);
+    lv_obj_set_size(widgets.sparklineLine, VALUE_COL_W, SPARKLINE_H);
+    lv_obj_set_style_line_width(widgets.sparklineLine, 2, LV_STATE_DEFAULT);
+    lv_obj_set_style_line_rounded(widgets.sparklineLine, true, LV_STATE_DEFAULT);
+    lv_obj_set_style_line_color(
+        widgets.sparklineLine,
+        lv_color_hex(base_theme::color::ACTIVE),
+        LV_STATE_DEFAULT
+    );
+    lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
+
     widgets.created = true;
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
+    SlotWidgets& widgets,
+    const RowCache& row
+) {
+    const bool showSparkline = row.sparkline.enabled && row.sparkline.sampleCount >= 2U;
+    if (widgets.valueLabel) {
+        if (showSparkline) {
+            lv_obj_add_flag(widgets.valueLabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(widgets.valueLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (!widgets.sparklineLine) return;
+
+    if (!showSparkline) {
+        if (widgets.sparklineVisible) {
+            lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
+            widgets.sparklineVisible = false;
+        }
+        return;
+    }
+
+    const uint8_t count = static_cast<uint8_t>(std::min<size_t>(
+        row.sparkline.sampleCount,
+        KEY_VALUE_SPARKLINE_SAMPLE_COUNT
+    ));
+    const int width = VALUE_COL_W - 1;
+    const int height = SPARKLINE_H - 1;
+    for (uint8_t i = 0; i < count; ++i) {
+        const uint8_t sample = row.sparkline.samples[i];
+        widgets.sparklinePoints[i].x =
+            static_cast<lv_value_precise_t>((static_cast<int>(i) * width) / (count - 1));
+        widgets.sparklinePoints[i].y =
+            static_cast<lv_value_precise_t>(height - ((static_cast<int>(sample) * height) / 255));
+    }
+    lv_line_set_points(widgets.sparklineLine, widgets.sparklinePoints.data(), count);
+    lv_obj_clear_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
+    widgets.sparklineVisible = true;
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
@@ -265,6 +343,23 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
     if (widgets.valueLabel) {
         style::apply(widgets.valueLabel).textColor(
             isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
+    }
+    if (widgets.sparklineLine) {
+        const bool visualPreview = widgets.sparklineVisible;
+        lv_obj_set_style_line_color(
+            widgets.sparklineLine,
+            lv_color_hex(
+                (isSelected || visualPreview)
+                    ? base_theme::color::ACTIVE
+                    : base_theme::color::INACTIVE
+            ),
+            LV_STATE_DEFAULT
+        );
+        lv_obj_set_style_line_opa(
+            widgets.sparklineLine,
+            (isSelected || visualPreview) ? LV_OPA_COVER : LV_OPA_70,
+            LV_STATE_DEFAULT
+        );
     }
 
     widgets.highlighted = isSelected;
