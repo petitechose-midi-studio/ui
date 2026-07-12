@@ -104,7 +104,7 @@ private:
     void createUi(lv_obj_t* parent);
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
-    void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
+    void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
     void ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role);
     void applyHighlightStyle(oc::ui::lvgl::widget::VirtualSlot& slot,
                              SlotWidgets& widgets,

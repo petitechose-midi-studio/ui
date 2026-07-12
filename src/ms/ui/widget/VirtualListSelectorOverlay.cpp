@@ -15,7 +15,6 @@ using namespace oc::ui::lvgl;
 namespace style = oc::ui::lvgl::style;
 
 namespace {
-constexpr int VISIBLE_SLOTS = 5;
 constexpr int ITEM_HEIGHT = 32;
 
 constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
@@ -36,9 +35,13 @@ FLASHMEM VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent
             .onUpdateHighlight([this](widget::VirtualSlot& slot, bool isSelected) {
                 updateSlotHighlight(slot, isSelected);
             });
-    }
 
-    slot_widgets_.resize(VISIBLE_SLOTS);
+        list->prepare();
+        const auto& slots = list->getSlots();
+        for (int i = 0; i < VISIBLE_SLOTS && i < static_cast<int>(slots.size()); ++i) {
+            ensureSlotWidgets(slots[static_cast<size_t>(i)].container, i);
+        }
+    }
 }
 
 FLASHMEM VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
@@ -120,7 +123,7 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
     const int slotIndex = index - list->getWindowStart();
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
 
-    ensureSlotWidgets(slot, slotIndex);
+    ensureSlotWidgets(slot.container, slotIndex);
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
 
     const char* name = "";
@@ -162,11 +165,10 @@ FLASHMEM void VirtualListSelectorOverlay::updateSlotHighlight(widget::VirtualSlo
     applyHighlightStyle(widgets, isSelected);
 }
 
-FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
+FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container, int slotIndex) {
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
-    if (widgets.created) return;
+    if (widgets.created || !container) return;
 
-    lv_obj_t* container = slot.container;
     lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(container, PAD_H, LV_STATE_DEFAULT);

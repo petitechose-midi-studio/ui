@@ -97,7 +97,7 @@ private:
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
-    void ensureSlotWidgets(oc::ui::lvgl::widget::VirtualSlot& slot, int slotIndex);
+    void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
     void applySparkline(SlotWidgets& widgets, const RowCache& row);
     void syncRows(const VirtualListKeyValueOverlayProps& props,
