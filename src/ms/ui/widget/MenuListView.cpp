@@ -155,6 +155,11 @@ FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
         .onUpdateHighlight([this](widget::VirtualSlot& slot, bool isSelected) {
             updateSlotHighlight(slot, isSelected);
         });
+    list_->prepare();
+    const auto& slots = list_->getSlots();
+    for (int i = 0; i < VISIBLE_SLOTS && i < static_cast<int>(slots.size()); ++i) {
+        ensureSlotWidgets(slots[static_cast<std::size_t>(i)].container, i);
+    }
     list_->show();
 }
 
@@ -260,7 +265,7 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
     if (index < 0 || index >= row_count_) return;
 
-    ensureSlotWidgets(slot, slotIndex);
+    ensureSlotWidgets(slot.container, slotIndex);
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(index)];
 
@@ -308,11 +313,10 @@ FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool 
     applyHighlightStyle(slot, widgets, isSelected, row);
 }
 
-FLASHMEM void MenuListView::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
+FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
-    if (widgets.created) return;
+    if (widgets.created || !row) return;
 
-    lv_obj_t* row = slot.container;
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(row, ROW_PAD_LEFT, 0);

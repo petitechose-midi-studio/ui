@@ -37,6 +37,13 @@ FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent
             .onUpdateHighlight([this](widget::VirtualSlot& slot, bool isSelected) {
                 updateSlotHighlight(slot, isSelected);
             });
+
+        // Build the fixed slot pool while this overlay is still parked.
+        list->prepare();
+        const auto& slots = list->getSlots();
+        for (int i = 0; i < VISIBLE_SLOTS && i < static_cast<int>(slots.size()); ++i) {
+            ensureSlotWidgets(slots[static_cast<size_t>(i)].container, i);
+        }
     }
 }
 
@@ -189,7 +196,7 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
     if (slotIndex < 0 || slotIndex >= VISIBLE_SLOTS) return;
     if (index < 0 || index >= row_count_) return;
 
-    ensureSlotWidgets(slot, slotIndex);
+    ensureSlotWidgets(slot.container, slotIndex);
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
     const auto& row = rows_[static_cast<size_t>(index)];
 
@@ -237,11 +244,10 @@ FLASHMEM void VirtualListKeyValueOverlay::updateSlotHighlight(widget::VirtualSlo
     applyHighlightStyle(widgets, isSelected);
 }
 
-FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(widget::VirtualSlot& slot, int slotIndex) {
+FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container, int slotIndex) {
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
-    if (widgets.created) return;
+    if (widgets.created || !container) return;
 
-    lv_obj_t* container = slot.container;
     lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(container, PAD_H, LV_STATE_DEFAULT);
