@@ -21,6 +21,7 @@ static constexpr size_t KEY_VALUE_SPARKLINE_SAMPLE_COUNT = 12;
 
 struct KeyValueSparkline {
     bool enabled = false;
+    bool centerLine = false;
     uint8_t sampleCount = 0;
     std::array<uint8_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> samples{};
 };
@@ -40,6 +41,10 @@ struct VirtualListKeyValueOverlayProps {
     const KeyValueRow* rows = nullptr;
     int rowCount = 0;
     int selectedIndex = 0;
+    // Keep the default quiet detail grammar. Decision surfaces can opt out so
+    // every visible fact stays readable while focus is still carried by the
+    // selected-row background and active value color.
+    bool dimUnselected = true;
     bool visible = false;
 
     // Optional: bump when rows content changes (lets render() skip realloc/rebind).
@@ -83,8 +88,10 @@ private:
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
         lv_obj_t* sparklineLine = nullptr;
+        lv_obj_t* sparklineCenterLine = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
+        bool dimUnselected = true;
         int boundIndex = -1;
         TextCache iconCache;
         TextCache keyCache;
@@ -115,6 +122,7 @@ private:
     uint32_t last_data_revision_ = 0;
     int last_row_count_ = 0;
     int row_count_ = 0;
+    bool dim_unselected_ = true;
 };
 
 }  // namespace ms::ui

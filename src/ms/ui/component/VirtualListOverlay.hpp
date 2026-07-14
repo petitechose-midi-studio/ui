@@ -31,6 +31,9 @@ public:
 
     void setTitle(const char* text);
     void setMeta(const char* text);
+    void setBackdropOpacity(lv_opa_t opacity) {
+        overlay_.setBackdropOpacity(opacity);
+    }
 
     // Convenience
     void configureList(int visibleCount, int itemHeight);

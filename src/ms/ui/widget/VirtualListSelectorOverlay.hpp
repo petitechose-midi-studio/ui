@@ -24,6 +24,13 @@ struct VirtualListSelectorOverlayProps {
     int itemCount = 0;
     int selectedIndex = 0;
     bool showIndexColumn = true;
+    // Keep the default subdued selector grammar. Decision/detail surfaces can
+    // opt out so every available item remains readable while focus is still
+    // conveyed by the selected-row background and primary text.
+    bool dimUnselected = true;
+    // Stacked decision surfaces can opt into an opaque backdrop so the
+    // previous overlay cannot leak text through the modal layer.
+    lv_opa_t backdropOpacity = LayoutOverlay::DEFAULT_BACKDROP_OPACITY;
     bool visible = false;
 
     // Optional: bump when list labels/shape changes (lets render() skip invalidations).
@@ -57,6 +64,7 @@ private:
         lv_obj_t* label = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
+        bool dimUnselected = true;
         bool indexVisible = true;
         bool indexVisibilityApplied = false;
         int boundIndex = -1;
@@ -79,6 +87,8 @@ private:
     const char* const* last_items_ = nullptr;
     int last_item_count_ = 0;
     bool last_show_index_column_ = true;
+    bool last_dim_unselected_ = true;
+    lv_opa_t last_backdrop_opacity_ = LayoutOverlay::DEFAULT_BACKDROP_OPACITY;
     uint32_t last_data_revision_ = 0;
 };
 
