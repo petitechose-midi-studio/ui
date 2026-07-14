@@ -21,6 +21,7 @@ static constexpr size_t KEY_VALUE_SPARKLINE_SAMPLE_COUNT = 12;
 
 struct KeyValueSparkline {
     bool enabled = false;
+    bool centerLine = false;
     uint8_t sampleCount = 0;
     std::array<uint8_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> samples{};
 };
@@ -87,6 +88,7 @@ private:
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
         lv_obj_t* sparklineLine = nullptr;
+        lv_obj_t* sparklineCenterLine = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         bool dimUnselected = true;

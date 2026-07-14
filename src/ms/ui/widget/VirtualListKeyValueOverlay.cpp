@@ -74,7 +74,9 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
               KEY_VALUE_SPARKLINE_SAMPLE_COUNT
           ))
         : 0U;
-    bool changed = cache.enabled != next.enabled || cache.sampleCount != nextCount;
+    bool changed = cache.enabled != next.enabled ||
+        cache.centerLine != next.centerLine ||
+        cache.sampleCount != nextCount;
     for (size_t i = 0; i < KEY_VALUE_SPARKLINE_SAMPLE_COUNT; ++i) {
         const uint8_t nextValue = i < nextCount ? next.samples[i] : 0U;
         if (cache.samples[i] != nextValue) {
@@ -83,6 +85,7 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
         }
     }
     cache.enabled = next.enabled && nextCount >= 2U;
+    cache.centerLine = cache.enabled && next.centerLine;
     cache.sampleCount = cache.enabled ? nextCount : 0U;
     return changed;
 }
@@ -301,6 +304,44 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
     );
     lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
 
+    widgets.sparklineCenterLine = lv_line_create(widgets.sparklineLine);
+    if (widgets.sparklineCenterLine) {
+        static const lv_point_precise_t centerPoints[] = {
+            {0, SPARKLINE_H / 2},
+            {VALUE_COL_W - 1, SPARKLINE_H / 2},
+        };
+        lv_obj_set_size(
+            widgets.sparklineCenterLine,
+            VALUE_COL_W,
+            SPARKLINE_H
+        );
+        lv_line_set_points(
+            widgets.sparklineCenterLine,
+            centerPoints,
+            2
+        );
+        lv_obj_set_style_line_width(
+            widgets.sparklineCenterLine,
+            1,
+            LV_STATE_DEFAULT
+        );
+        lv_obj_set_style_line_color(
+            widgets.sparklineCenterLine,
+            lv_color_hex(base_theme::color::INACTIVE_LIGHTER),
+            LV_STATE_DEFAULT
+        );
+        lv_obj_set_style_line_opa(
+            widgets.sparklineCenterLine,
+            LV_OPA_40,
+            LV_STATE_DEFAULT
+        );
+        lv_obj_add_flag(
+            widgets.sparklineCenterLine,
+            LV_OBJ_FLAG_IGNORE_LAYOUT
+        );
+        lv_obj_add_flag(widgets.sparklineCenterLine, LV_OBJ_FLAG_HIDDEN);
+    }
+
     widgets.created = true;
 }
 
@@ -323,6 +364,12 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
             lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
             widgets.sparklineVisible = false;
         }
+        if (widgets.sparklineCenterLine) {
+            lv_obj_add_flag(
+                widgets.sparklineCenterLine,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        }
         return;
     }
 
@@ -341,6 +388,19 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
     }
     lv_line_set_points(widgets.sparklineLine, widgets.sparklinePoints.data(), count);
     lv_obj_clear_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
+    if (widgets.sparklineCenterLine) {
+        if (row.sparkline.centerLine) {
+            lv_obj_clear_flag(
+                widgets.sparklineCenterLine,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        } else {
+            lv_obj_add_flag(
+                widgets.sparklineCenterLine,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        }
+    }
     widgets.sparklineVisible = true;
 }
 
