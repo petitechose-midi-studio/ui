@@ -169,6 +169,9 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
 
+    const bool dimStyleChanged = dim_unselected_ != props.dimUnselected;
+    dim_unselected_ = props.dimUnselected;
+
     std::array<int, MAX_ROWS> dirtyIndices{};
     int dirtyCount = 0;
     syncRows(props, dirtyIndices, dirtyCount);
@@ -179,7 +182,11 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
         list->setSelectedIndex(props.selectedIndex);
 
         if (!countChanged && overlay_.isVisible()) {
-            invalidateDirtyRows(dirtyIndices, dirtyCount);
+            if (dimStyleChanged) {
+                list->invalidate();
+            } else {
+                invalidateDirtyRows(dirtyIndices, dirtyCount);
+            }
         }
     }
 
@@ -263,20 +270,25 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
     widgets.keyLabel = lv_label_create(container);
     lv_obj_set_flex_grow(widgets.keyLabel, 1);
     lv_label_set_long_mode(widgets.keyLabel, LV_LABEL_LONG_DOT);
-    if (fonts.list_item_label) {
-        lv_obj_set_style_text_font(widgets.keyLabel, fonts.list_item_label, LV_STATE_DEFAULT);
-    }
+    const lv_font_t* keyFont = fonts.list_item_label
+        ? fonts.list_item_label
+        : LV_FONT_DEFAULT;
+    lv_obj_set_style_text_font(widgets.keyLabel, keyFont, LV_STATE_DEFAULT);
+    // A fixed one-line box is required for LONG_DOT. With auto height LVGL
+    // wraps first, allowing a long key to escape its 32 px virtual row and
+    // collide with the contextual strip below it.
+    lv_obj_set_height(widgets.keyLabel, lv_font_get_line_height(keyFont));
     style::apply(widgets.keyLabel).textColor(base_theme::color::INACTIVE);
 
     widgets.valueLabel = lv_label_create(container);
     lv_obj_set_width(widgets.valueLabel, VALUE_COL_W);
     lv_obj_set_style_text_align(widgets.valueLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
     lv_label_set_long_mode(widgets.valueLabel, LV_LABEL_LONG_DOT);
-    if (fonts.inter_14_semibold) {
-        lv_obj_set_style_text_font(widgets.valueLabel, fonts.inter_14_semibold, LV_STATE_DEFAULT);
-    } else if (fonts.list_item_label) {
-        lv_obj_set_style_text_font(widgets.valueLabel, fonts.list_item_label, LV_STATE_DEFAULT);
-    }
+    const lv_font_t* valueFont = fonts.inter_14_semibold
+        ? fonts.inter_14_semibold
+        : keyFont;
+    lv_obj_set_style_text_font(widgets.valueLabel, valueFont, LV_STATE_DEFAULT);
+    lv_obj_set_height(widgets.valueLabel, lv_font_get_line_height(valueFont));
 
     widgets.sparklineLine = lv_line_create(container);
     lv_obj_set_size(widgets.sparklineLine, VALUE_COL_W, SPARKLINE_H);
@@ -333,7 +345,10 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
-    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected &&
+        widgets.dimUnselected == dim_unselected_) {
+        return;
+    }
 
     if (widgets.iconLabel) {
         lv_obj_set_style_text_opa(
@@ -344,11 +359,19 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
     }
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
-            isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
+            isSelected
+                ? base_theme::color::TEXT_PRIMARY
+                : (dim_unselected_
+                       ? base_theme::color::INACTIVE
+                       : base_theme::color::TEXT_SECONDARY));
     }
     if (widgets.valueLabel) {
         style::apply(widgets.valueLabel).textColor(
-            isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
+            isSelected
+                ? base_theme::color::ACTIVE
+                : (dim_unselected_
+                       ? base_theme::color::INACTIVE
+                       : base_theme::color::INACTIVE_LIGHTER));
     }
     if (widgets.sparklineLine) {
         const bool visualPreview = widgets.sparklineVisible;
@@ -369,6 +392,7 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
     }
 
     widgets.highlighted = isSelected;
+    widgets.dimUnselected = dim_unselected_;
     widgets.highlightStyleApplied = true;
 }
 

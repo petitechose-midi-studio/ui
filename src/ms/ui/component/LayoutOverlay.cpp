@@ -9,17 +9,13 @@ namespace ms::ui {
 using namespace oc::ui::lvgl;
 namespace style = oc::ui::lvgl::style;
 
-namespace {
-constexpr uint8_t OVERLAY_BG_OPACITY = 230;  // ~90% opacity
-}
-
 FLASHMEM LayoutOverlay::LayoutOverlay(lv_obj_t* parent) : parent_(parent) {
     // Fullscreen overlay with semi-transparent background
     overlay_ = lv_obj_create(parent_);
     lv_obj_add_flag(overlay_, LV_OBJ_FLAG_FLOATING);
     style::apply(overlay_)
         .fullSize()
-        .bgColor(base_theme::color::BACKGROUND, OVERLAY_BG_OPACITY)
+        .bgColor(base_theme::color::BACKGROUND, DEFAULT_BACKDROP_OPACITY)
         .noScroll()
         .noBorder();
     lv_obj_align(overlay_, LV_ALIGN_CENTER, 0, 0);
@@ -74,6 +70,12 @@ FLASHMEM void LayoutOverlay::showFooter(bool show) {
         } else {
             lv_obj_add_flag(footer_, LV_OBJ_FLAG_HIDDEN);
         }
+    }
+}
+
+FLASHMEM void LayoutOverlay::setBackdropOpacity(lv_opa_t opacity) {
+    if (overlay_) {
+        lv_obj_set_style_bg_opa(overlay_, opacity, LV_STATE_DEFAULT);
     }
 }
 

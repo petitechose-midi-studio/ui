@@ -30,6 +30,8 @@ namespace ms::ui {
  */
 class LayoutOverlay : public oc::ui::lvgl::IComponent {
 public:
+    static constexpr lv_opa_t DEFAULT_BACKDROP_OPACITY = 230;
+
     explicit LayoutOverlay(lv_obj_t* parent);
     ~LayoutOverlay() override;
 
@@ -44,6 +46,7 @@ public:
     // Slot visibility control
     void showHeader(bool show = true);
     void showFooter(bool show = true);
+    void setBackdropOpacity(lv_opa_t opacity);
 
     // IComponent
     void show() override;

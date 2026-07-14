@@ -88,10 +88,18 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
     if (props.showIndexColumn != last_show_index_column_) {
         dataChanged = true;
     }
+    if (props.dimUnselected != last_dim_unselected_) {
+        dataChanged = true;
+    }
+    if (props.backdropOpacity != last_backdrop_opacity_) {
+        overlay_.setBackdropOpacity(props.backdropOpacity);
+    }
 
     last_items_ = props.items;
     last_item_count_ = props.itemCount;
     last_show_index_column_ = props.showIndexColumn;
+    last_dim_unselected_ = props.dimUnselected;
+    last_backdrop_opacity_ = props.backdropOpacity;
     last_data_revision_ = props.dataRevision;
 
     current_props_ = props;
@@ -194,18 +202,30 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
 }
 
 FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
-    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) return;
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected &&
+        widgets.dimUnselected == current_props_.dimUnselected) {
+        return;
+    }
 
     if (widgets.label) {
         style::apply(widgets.label).textColor(
-            isSelected ? base_theme::color::TEXT_PRIMARY : base_theme::color::INACTIVE);
+            isSelected
+                ? base_theme::color::TEXT_PRIMARY
+                : (current_props_.dimUnselected
+                       ? base_theme::color::INACTIVE
+                       : base_theme::color::TEXT_SECONDARY));
     }
     if (widgets.indexLabel) {
         style::apply(widgets.indexLabel).textColor(
-            isSelected ? base_theme::color::ACTIVE : base_theme::color::INACTIVE);
+            isSelected
+                ? base_theme::color::ACTIVE
+                : (current_props_.dimUnselected
+                       ? base_theme::color::INACTIVE
+                       : base_theme::color::INACTIVE_LIGHTER));
     }
 
     widgets.highlighted = isSelected;
+    widgets.dimUnselected = current_props_.dimUnselected;
     widgets.highlightStyleApplied = true;
 }
 
