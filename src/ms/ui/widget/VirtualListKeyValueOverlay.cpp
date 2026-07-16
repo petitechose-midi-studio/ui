@@ -22,6 +22,11 @@ constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int ICON_COL_W = 16;
 constexpr int VALUE_COL_W = 110; // stable alignment for values
 constexpr int SPARKLINE_H = 18;
+constexpr int COMPACT_PAD_H = 8;
+constexpr int COMPACT_COL_GAP = 4;
+constexpr int COMPACT_ICON_COL_W = 14;
+constexpr int COMPACT_DETAIL_COL_W = 78;
+constexpr int COMPACT_SPARKLINE_W = 58;
 }
 
 FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
@@ -124,6 +129,7 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         auto& current = rows_[static_cast<size_t>(i)];
         const bool keyChanged = copyTextIfChanged(current.key, row ? row->key : "");
         const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
+        const bool detailChanged = copyTextIfChanged(current.detail, row ? row->detail : "");
         const bool iconChanged = copyTextIfChanged(current.icon, row ? row->icon : "");
         const bool iconStyleChanged =
             current.iconFont != (row ? row->iconFont : nullptr) ||
@@ -134,7 +140,7 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         );
         current.iconFont = row ? row->iconFont : nullptr;
         current.iconColor = row ? row->iconColor : 0U;
-        if ((keyChanged || valueChanged || iconChanged || iconStyleChanged || sparklineChanged) &&
+        if ((keyChanged || valueChanged || detailChanged || iconChanged || iconStyleChanged || sparklineChanged) &&
             dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<size_t>(dirtyCount++)] = i;
         }
@@ -144,6 +150,7 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         auto& current = rows_[static_cast<size_t>(i)];
         copyTextIfChanged(current.key, "");
         copyTextIfChanged(current.value, "");
+        copyTextIfChanged(current.detail, "");
         copyTextIfChanged(current.icon, "");
         current.iconFont = nullptr;
         current.iconColor = 0;
@@ -178,10 +185,43 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
 
     const bool dimStyleChanged = dim_unselected_ != props.dimUnselected;
     dim_unselected_ = props.dimUnselected;
+    const bool compactStyleChanged = compact_facts_ != props.compactFacts;
+    compact_facts_ = props.compactFacts;
+    if (compactStyleChanged) {
+        for (auto& widgets : slot_widgets_) {
+            if (widgets.created) applyCompactLayout(widgets);
+        }
+    }
 
     std::array<int, MAX_ROWS> dirtyIndices{};
     int dirtyCount = 0;
-    syncRows(props, dirtyIndices, dirtyCount);
+    bool providerChanged = false;
+    if (props.rowProvider != nullptr) {
+        const int nextCount = std::clamp(
+            props.rowCount,
+            0,
+            MAX_PROVIDER_ROWS
+        );
+        providerChanged = row_provider_ != props.rowProvider ||
+            row_provider_context_ != props.rowProviderContext ||
+            props.dataRevision == 0U ||
+            last_data_revision_ != props.dataRevision ||
+            row_count_ != nextCount;
+        row_provider_ = props.rowProvider;
+        row_provider_context_ = props.rowProviderContext;
+        row_count_ = nextCount;
+        last_row_count_ = nextCount;
+        last_data_revision_ = props.dataRevision;
+    } else {
+        if (row_provider_ != nullptr) {
+            row_provider_ = nullptr;
+            row_provider_context_ = nullptr;
+            last_data_revision_ = 0;
+            last_row_count_ = -1;
+            providerChanged = true;
+        }
+        syncRows(props, dirtyIndices, dirtyCount);
+    }
 
     auto* list = overlay_.list();
     if (list) {
@@ -189,7 +229,7 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
         list->setSelectedIndex(props.selectedIndex);
 
         if (!countChanged && overlay_.isVisible()) {
-            if (dimStyleChanged) {
+            if (dimStyleChanged || compactStyleChanged || providerChanged) {
                 list->invalidate();
             } else {
                 invalidateDirtyRows(dirtyIndices, dirtyCount);
@@ -212,7 +252,9 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
 
     ensureSlotWidgets(slot.container, slotIndex);
     auto& widgets = slot_widgets_[static_cast<size_t>(slotIndex)];
-    const auto& row = rows_[static_cast<size_t>(index)];
+    const auto& row = row_provider_ != nullptr
+        ? materializeProviderRow(index)
+        : rows_[static_cast<size_t>(index)];
 
     if (widgets.iconLabel) {
         const bool hasIcon = row.icon.text[0] != '\0' && row.iconFont != nullptr;
@@ -241,10 +283,37 @@ FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, in
     if (widgets.valueLabel) {
         setLabelTextIfChanged(widgets.valueLabel, widgets.valueCache, row.value.text);
     }
+    if (widgets.detailLabel) {
+        setLabelTextIfChanged(widgets.detailLabel, widgets.detailCache, row.detail.text);
+        if (row.detail.text[0] != '\0') {
+            lv_obj_clear_flag(widgets.detailLabel, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(widgets.detailLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     applySparkline(widgets, row);
 
     widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
+}
+
+FLASHMEM const VirtualListKeyValueOverlay::RowCache&
+VirtualListKeyValueOverlay::materializeProviderRow(int index) {
+    provider_buffer_ = {};
+    if (row_provider_ != nullptr) {
+        row_provider_(row_provider_context_, index, provider_buffer_);
+    }
+    (void)copyTextIfChanged(provider_row_.key, provider_buffer_.key.data());
+    (void)copyTextIfChanged(provider_row_.value, provider_buffer_.value.data());
+    (void)copyTextIfChanged(provider_row_.detail, provider_buffer_.detail.data());
+    (void)copyTextIfChanged(provider_row_.icon, provider_buffer_.icon.data());
+    provider_row_.iconFont = provider_buffer_.iconFont;
+    provider_row_.iconColor = provider_buffer_.iconColor;
+    (void)copySparklineIfChanged(
+        provider_row_.sparkline,
+        provider_buffer_.sparkline
+    );
+    return provider_row_;
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
@@ -286,6 +355,18 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
     // collide with the contextual strip below it.
     lv_obj_set_height(widgets.keyLabel, lv_font_get_line_height(keyFont));
     style::apply(widgets.keyLabel).textColor(base_theme::color::INACTIVE);
+
+    widgets.detailLabel = lv_label_create(container);
+    lv_obj_set_width(widgets.detailLabel, COMPACT_DETAIL_COL_W);
+    lv_obj_set_style_text_align(widgets.detailLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
+    lv_label_set_long_mode(widgets.detailLabel, LV_LABEL_LONG_DOT);
+    const lv_font_t* detailFont = fonts.inter_12_medium
+        ? fonts.inter_12_medium
+        : keyFont;
+    lv_obj_set_style_text_font(widgets.detailLabel, detailFont, LV_STATE_DEFAULT);
+    lv_obj_set_height(widgets.detailLabel, lv_font_get_line_height(detailFont));
+    style::apply(widgets.detailLabel).textColor(base_theme::color::TEXT_SECONDARY);
+    lv_obj_add_flag(widgets.detailLabel, LV_OBJ_FLAG_HIDDEN);
 
     widgets.valueLabel = lv_label_create(container);
     lv_obj_set_width(widgets.valueLabel, VALUE_COL_W);
@@ -338,6 +419,56 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
     }
 
     widgets.created = true;
+    applyCompactLayout(widgets);
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::applyCompactLayout(SlotWidgets& widgets) {
+    if (!widgets.created || !widgets.keyLabel) return;
+    lv_obj_t* container = lv_obj_get_parent(widgets.keyLabel);
+    if (!container) return;
+
+    lv_obj_set_style_pad_left(
+        container,
+        compact_facts_ ? COMPACT_PAD_H : PAD_H,
+        LV_STATE_DEFAULT
+    );
+    lv_obj_set_style_pad_right(
+        container,
+        compact_facts_ ? COMPACT_PAD_H : PAD_H,
+        LV_STATE_DEFAULT
+    );
+    lv_obj_set_style_pad_column(
+        container,
+        compact_facts_ ? COMPACT_COL_GAP : COL_GAP,
+        LV_STATE_DEFAULT
+    );
+    if (widgets.iconLabel) {
+        lv_obj_set_width(
+            widgets.iconLabel,
+            compact_facts_ ? COMPACT_ICON_COL_W : ICON_COL_W
+        );
+    }
+    if (widgets.detailLabel) {
+        lv_obj_set_width(widgets.detailLabel, COMPACT_DETAIL_COL_W);
+    }
+    if (widgets.valueLabel) {
+        lv_obj_set_width(
+            widgets.valueLabel,
+            compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
+        );
+    }
+    if (widgets.sparklineLine) {
+        lv_obj_set_width(
+            widgets.sparklineLine,
+            compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
+        );
+    }
+    if (widgets.sparklineCenterLine) {
+        lv_obj_set_width(
+            widgets.sparklineCenterLine,
+            compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
+        );
+    }
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
@@ -372,7 +503,7 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
         row.sparkline.sampleCount,
         KEY_VALUE_SPARKLINE_SAMPLE_COUNT
     ));
-    const int width = VALUE_COL_W - 1;
+    const int width = (compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W) - 1;
     const int height = SPARKLINE_H - 1;
     for (uint8_t i = 0; i < count; ++i) {
         const uint8_t sample = row.sparkline.samples[i];
@@ -425,7 +556,7 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
                 static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
             };
             widgets.sparklineAuxPoints[1] = {
-                static_cast<lv_value_precise_t>(VALUE_COL_W - 1),
+                static_cast<lv_value_precise_t>(width),
                 static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
             };
             lv_line_set_points(
