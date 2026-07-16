@@ -76,6 +76,8 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
         : 0U;
     bool changed = cache.enabled != next.enabled ||
         cache.centerLine != next.centerLine ||
+        cache.liveMarker != next.liveMarker ||
+        cache.liveValue != next.liveValue ||
         cache.sampleCount != nextCount;
     for (size_t i = 0; i < KEY_VALUE_SPARKLINE_SAMPLE_COUNT; ++i) {
         const uint8_t nextValue = i < nextCount ? next.samples[i] : 0U;
@@ -86,6 +88,8 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
     }
     cache.enabled = next.enabled && nextCount >= 2U;
     cache.centerLine = cache.enabled && next.centerLine;
+    cache.liveMarker = cache.enabled && next.liveMarker;
+    cache.liveValue = next.liveValue;
     cache.sampleCount = cache.enabled ? nextCount : 0U;
     return changed;
 }
@@ -306,19 +310,10 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
 
     widgets.sparklineCenterLine = lv_line_create(widgets.sparklineLine);
     if (widgets.sparklineCenterLine) {
-        static const lv_point_precise_t centerPoints[] = {
-            {0, SPARKLINE_H / 2},
-            {VALUE_COL_W - 1, SPARKLINE_H / 2},
-        };
         lv_obj_set_size(
             widgets.sparklineCenterLine,
             VALUE_COL_W,
             SPARKLINE_H
-        );
-        lv_line_set_points(
-            widgets.sparklineCenterLine,
-            centerPoints,
-            2
         );
         lv_obj_set_style_line_width(
             widgets.sparklineCenterLine,
@@ -389,7 +384,70 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
     lv_line_set_points(widgets.sparklineLine, widgets.sparklinePoints.data(), count);
     lv_obj_clear_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
     if (widgets.sparklineCenterLine) {
-        if (row.sparkline.centerLine) {
+        if (row.sparkline.liveMarker) {
+            const int markerY = height -
+                ((static_cast<int>(row.sparkline.liveValue) * height) / 255);
+            widgets.sparklineAuxPoints[0] = {
+                static_cast<lv_value_precise_t>(width),
+                static_cast<lv_value_precise_t>(std::max(0, markerY - 2)),
+            };
+            widgets.sparklineAuxPoints[1] = {
+                static_cast<lv_value_precise_t>(width),
+                static_cast<lv_value_precise_t>(std::min(height, markerY + 2)),
+            };
+            lv_line_set_points(
+                widgets.sparklineCenterLine,
+                widgets.sparklineAuxPoints.data(),
+                widgets.sparklineAuxPoints.size()
+            );
+            lv_obj_set_style_line_width(
+                widgets.sparklineCenterLine,
+                2,
+                LV_STATE_DEFAULT
+            );
+            lv_obj_set_style_line_color(
+                widgets.sparklineCenterLine,
+                lv_color_hex(base_theme::color::ACTIVE),
+                LV_STATE_DEFAULT
+            );
+            lv_obj_set_style_line_opa(
+                widgets.sparklineCenterLine,
+                LV_OPA_COVER,
+                LV_STATE_DEFAULT
+            );
+            lv_obj_clear_flag(
+                widgets.sparklineCenterLine,
+                LV_OBJ_FLAG_HIDDEN
+            );
+        } else if (row.sparkline.centerLine) {
+            widgets.sparklineAuxPoints[0] = {
+                0,
+                static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
+            };
+            widgets.sparklineAuxPoints[1] = {
+                static_cast<lv_value_precise_t>(VALUE_COL_W - 1),
+                static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
+            };
+            lv_line_set_points(
+                widgets.sparklineCenterLine,
+                widgets.sparklineAuxPoints.data(),
+                widgets.sparklineAuxPoints.size()
+            );
+            lv_obj_set_style_line_width(
+                widgets.sparklineCenterLine,
+                1,
+                LV_STATE_DEFAULT
+            );
+            lv_obj_set_style_line_color(
+                widgets.sparklineCenterLine,
+                lv_color_hex(base_theme::color::INACTIVE_LIGHTER),
+                LV_STATE_DEFAULT
+            );
+            lv_obj_set_style_line_opa(
+                widgets.sparklineCenterLine,
+                LV_OPA_40,
+                LV_STATE_DEFAULT
+            );
             lv_obj_clear_flag(
                 widgets.sparklineCenterLine,
                 LV_OBJ_FLAG_HIDDEN

@@ -22,7 +22,9 @@ static constexpr size_t KEY_VALUE_SPARKLINE_SAMPLE_COUNT = 12;
 struct KeyValueSparkline {
     bool enabled = false;
     bool centerLine = false;
+    bool liveMarker = false;
     uint8_t sampleCount = 0;
+    uint8_t liveValue = 0;
     std::array<uint8_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> samples{};
 };
 
@@ -100,6 +102,7 @@ private:
         uint32_t iconColor = 0;
         bool sparklineVisible = false;
         std::array<lv_point_precise_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> sparklinePoints{};
+        std::array<lv_point_precise_t, 2> sparklineAuxPoints{};
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
