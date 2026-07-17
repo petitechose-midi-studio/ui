@@ -1,10 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 #include <lvgl.h>
-
-#include <oc/ui/lvgl/IWidget.hpp>
 
 #include <ms/ui/widget/CurvePreviewGeometry.hpp>
 
@@ -53,16 +52,16 @@ struct CurvePreviewWidgetProps {
  * region. MIDI Studio owners use makeExtmemUnique, so all fixed geometry stays
  * in PSRAM. render() never creates LVGL objects or allocates sample storage.
  */
-class CurvePreviewWidget : public oc::ui::lvgl::IWidget {
+class CurvePreviewWidget {
 public:
     explicit CurvePreviewWidget(lv_obj_t* parent);
-    ~CurvePreviewWidget() override;
+    ~CurvePreviewWidget();
 
     CurvePreviewWidget(const CurvePreviewWidget&) = delete;
     CurvePreviewWidget& operator=(const CurvePreviewWidget&) = delete;
 
     void render(const CurvePreviewWidgetProps& props);
-    lv_obj_t* getElement() const override { return surface_; }
+    [[nodiscard]] lv_obj_t* getElement() const { return surface_; }
 
     [[nodiscard]] uint8_t activeSampleCount() const {
         return geometry_.sampleCount;
@@ -81,8 +80,11 @@ private:
     CurvePreviewGeometry geometry_{};
     std::array<lv_point_precise_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT>
         drawPoints_{};
-    CurvePreviewWidgetProps renderedProps_{};
-    lv_area_t renderedArea_{};
+    // Keep the cache disengaged until the first render. Constructing a default
+    // props value here emits a 100-byte initialized-data template on Teensy;
+    // optional keeps that cold cache entirely inside the PSRAM-owned widget.
+    std::optional<CurvePreviewWidgetProps> renderedProps_{};
+    std::optional<lv_area_t> renderedArea_{};
     bool rendered_ = false;
     bool visible_ = false;
 };

@@ -104,7 +104,9 @@ FLASHMEM void drawCurveWithDiscontinuities(
     populatePoints(geometry.curve, geometry.sampleCount, area, points);
     std::size_t runStart = 0U;
     for (std::size_t index = 1U; index < count; ++index) {
-        if (!geometry.discontinuities.test(index)) continue;
+        // index is bounded by geometry.sampleCount (max 64), so the unchecked
+        // bitset accessor is both safe and avoids an exception-format string.
+        if (!geometry.discontinuities[index]) continue;
         if (index - runStart >= 2U) {
             drawLine(
                 layer,
@@ -244,7 +246,7 @@ FLASHMEM void CurvePreviewWidget::createUi(lv_obj_t* parent) {
 FLASHMEM bool CurvePreviewWidget::staticStyleChanged(
     const CurvePreviewWidgetProps& props
 ) const {
-    const auto& previous = renderedProps_;
+    const auto& previous = *renderedProps_;
     return previous.showImpactBand != props.showImpactBand ||
            previous.showCenterGuide != props.showCenterGuide ||
            previous.showRestGuide != props.showRestGuide ||
@@ -272,13 +274,13 @@ FLASHMEM void CurvePreviewWidget::invalidateMarker(
 ) const {
     if (surface_ == nullptr || !marker.visible) return;
     const auto rect = curvePreviewMarkerRect(
-        renderedArea_.x1,
-        renderedArea_.y1,
-        lv_area_get_width(&renderedArea_),
-        lv_area_get_height(&renderedArea_),
+        renderedArea_->x1,
+        renderedArea_->y1,
+        lv_area_get_width(&*renderedArea_),
+        lv_area_get_height(&*renderedArea_),
         marker.positionQ16,
         marker.valueQ16,
-        renderedProps_.markerRadius + 1
+        renderedProps_->markerRadius + 1
     );
     if (!rect.valid()) return;
     oc::ui::lvgl::invalidateStaticSurfaceArea(
@@ -294,73 +296,73 @@ FLASHMEM void CurvePreviewWidget::invalidateMarker(
 
 FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
     if (!rendered_ || geometry_.sampleCount < 2U || layer == nullptr) return;
-    if (renderedProps_.showCenterGuide) {
+    const auto& props = *renderedProps_;
+    if (props.showCenterGuide) {
         drawGuide(
             layer,
-            renderedArea_,
+            *renderedArea_,
             32768U,
-            renderedProps_.guideColor,
-            renderedProps_.guideOpacity
+            props.guideColor,
+            props.guideOpacity
         );
     }
-    if (renderedProps_.showRestGuide &&
-        (!renderedProps_.showCenterGuide ||
-         renderedProps_.restValueQ16 != 32768U)) {
+    if (props.showRestGuide &&
+        (!props.showCenterGuide || props.restValueQ16 != 32768U)) {
         drawGuide(
             layer,
-            renderedArea_,
-            renderedProps_.restValueQ16,
-            renderedProps_.guideColor,
-            renderedProps_.guideOpacity
+            *renderedArea_,
+            props.restValueQ16,
+            props.guideColor,
+            props.guideOpacity
         );
     }
-    if (renderedProps_.showImpactBand) {
+    if (props.showImpactBand) {
         drawImpactBand(
             layer,
             geometry_,
-            renderedArea_,
-            renderedProps_.impactColor,
-            renderedProps_.bandOpacity
+            *renderedArea_,
+            props.impactColor,
+            props.bandOpacity
         );
         populatePoints(
             geometry_.base,
             geometry_.sampleCount,
-            renderedArea_,
+            *renderedArea_,
             drawPoints_
         );
         drawLine(
             layer,
             drawPoints_.data(),
             geometry_.sampleCount,
-            renderedProps_.baseColor,
-            renderedProps_.baseOpacity,
-            renderedProps_.baseWidth
+            props.baseColor,
+            props.baseOpacity,
+            props.baseWidth
         );
         populatePoints(
             geometry_.impact,
             geometry_.sampleCount,
-            renderedArea_,
+            *renderedArea_,
             drawPoints_
         );
         drawLine(
             layer,
             drawPoints_.data(),
             geometry_.sampleCount,
-            renderedProps_.impactColor,
-            renderedProps_.impactOpacity,
-            renderedProps_.impactWidth
+            props.impactColor,
+            props.impactOpacity,
+            props.impactWidth
         );
     }
     drawCurveWithDiscontinuities(
         layer,
         geometry_,
-        renderedArea_,
+        *renderedArea_,
         drawPoints_,
-        renderedProps_.curveColor,
-        renderedProps_.curveOpacity,
-        renderedProps_.curveWidth
+        props.curveColor,
+        props.curveOpacity,
+        props.curveWidth
     );
-    drawMarker(layer, renderedArea_, renderedProps_);
+    drawMarker(layer, *renderedArea_, props);
 }
 
 FLASHMEM void CurvePreviewWidget::onDrawEvent(lv_event_t* event) {
@@ -404,18 +406,20 @@ FLASHMEM void CurvePreviewWidget::render(
         .x2 = static_cast<lv_coord_t>(surfaceArea.x2 - paddingX),
         .y2 = static_cast<lv_coord_t>(surfaceArea.y2 - paddingY),
     };
-    const bool areaChanged = !rendered_ || !sameArea(renderedArea_, area);
+    const bool areaChanged = !rendered_ || !sameArea(*renderedArea_, area);
     const bool geometryChanged = areaChanged || !rendered_ ||
-        renderedProps_.sampleProvider != props.sampleProvider ||
-        renderedProps_.sampleContext != props.sampleContext ||
-        renderedProps_.geometryRevision != props.geometryRevision;
+        renderedProps_->sampleProvider != props.sampleProvider ||
+        renderedProps_->sampleContext != props.sampleContext ||
+        renderedProps_->geometryRevision != props.geometryRevision;
     const bool styleChanged = !rendered_ || staticStyleChanged(props);
     const bool markerChanged = !rendered_ ||
-        !sameMarker(renderedProps_.marker, props.marker);
+        !sameMarker(renderedProps_->marker, props.marker);
 
     if (!geometryChanged && !styleChanged && !markerChanged) return;
 
-    const CurvePreviewMarker previousMarker = renderedProps_.marker;
+    const CurvePreviewMarker previousMarker = rendered_
+        ? renderedProps_->marker
+        : CurvePreviewMarker{};
     renderedArea_ = area;
     if (geometryChanged) {
         (void)geometry_.rebuild(

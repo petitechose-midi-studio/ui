@@ -99,7 +99,14 @@ struct CurvePreviewRect {
     uint16_t valueQ16,
     int32_t radius
 ) {
-    if (width < 1 || height < 1 || radius < 0) return {};
+    if (width < 1 || height < 1 || radius < 0) {
+        return {
+            .x1 = originX,
+            .y1 = originY,
+            .x2 = originX - 1,
+            .y2 = originY - 1,
+        };
+    }
     const int32_t x = curvePreviewCoordinate(positionQ16, originX, width);
     const int32_t y = curvePreviewY(valueQ16, originY, height);
     return {
@@ -143,7 +150,9 @@ struct CurvePreviewGeometry {
             base[index] = sample.base;
             impact[index] = sample.impact;
             if (index > 0U && sample.discontinuityBefore) {
-                discontinuities.set(index);
+                // index is bounded by CURVE_PREVIEW_MAX_SAMPLE_COUNT above;
+                // unchecked access avoids pulling the embedded exception path.
+                discontinuities[index] = true;
             }
         }
         sampleCount = static_cast<uint8_t>(count);
