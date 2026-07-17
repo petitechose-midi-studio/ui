@@ -8,7 +8,7 @@
 
 namespace ms::ui {
 
-inline constexpr std::size_t CURVE_PREVIEW_MAX_SAMPLE_COUNT = 96U;
+inline constexpr std::size_t CURVE_PREVIEW_MAX_SAMPLE_COUNT = 64U;
 inline constexpr int32_t CURVE_PREVIEW_SAMPLE_PITCH_PX = 3;
 inline constexpr uint16_t CURVE_PREVIEW_NORMALIZED_MAX = 65535U;
 

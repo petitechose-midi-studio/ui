@@ -161,6 +161,10 @@ FLASHMEM void drawImpactBand(
         const lv_coord_t width = static_cast<lv_coord_t>(
             std::max<int32_t>(1, nextX - x + 1)
         );
+        if (x + width < layer->_clip_area.x1 ||
+            x - width > layer->_clip_area.x2) {
+            continue;
+        }
         std::array<lv_point_precise_t, 2> points{{
             {
                 static_cast<lv_value_precise_t>(x),
@@ -245,6 +249,8 @@ FLASHMEM bool CurvePreviewWidget::staticStyleChanged(
            previous.showCenterGuide != props.showCenterGuide ||
            previous.showRestGuide != props.showRestGuide ||
            previous.restValueQ16 != props.restValueQ16 ||
+           previous.paddingX != props.paddingX ||
+           previous.paddingY != props.paddingY ||
            previous.curveColor != props.curveColor ||
            previous.baseColor != props.baseColor ||
            previous.impactColor != props.impactColor ||
@@ -384,8 +390,20 @@ FLASHMEM void CurvePreviewWidget::render(
         rendered_ = false;
     }
 
-    lv_area_t area{};
-    lv_obj_get_coords(surface_, &area);
+    // A retained parent can become visible in the same presentation pass.
+    // Resolve its pending layout before deriving width-dependent geometry so
+    // the first frame cannot cache an empty 0x0 surface.
+    lv_obj_update_layout(surface_);
+    lv_area_t surfaceArea{};
+    lv_obj_get_coords(surface_, &surfaceArea);
+    const lv_coord_t paddingX = std::max<lv_coord_t>(0, props.paddingX);
+    const lv_coord_t paddingY = std::max<lv_coord_t>(0, props.paddingY);
+    const lv_area_t area{
+        .x1 = static_cast<lv_coord_t>(surfaceArea.x1 + paddingX),
+        .y1 = static_cast<lv_coord_t>(surfaceArea.y1 + paddingY),
+        .x2 = static_cast<lv_coord_t>(surfaceArea.x2 - paddingX),
+        .y2 = static_cast<lv_coord_t>(surfaceArea.y2 - paddingY),
+    };
     const bool areaChanged = !rendered_ || !sameArea(renderedArea_, area);
     const bool geometryChanged = areaChanged || !rendered_ ||
         renderedProps_.sampleProvider != props.sampleProvider ||

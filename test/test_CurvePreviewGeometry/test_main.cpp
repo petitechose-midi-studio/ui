@@ -36,15 +36,15 @@ void testWidthDerivedDensity() {
     assert(curvePreviewSampleCountForWidth(1) == 0U);
     assert(curvePreviewSampleCountForWidth(2) == 2U);
     assert(curvePreviewSampleCountForWidth(180) == 61U);
-    assert(curvePreviewSampleCountForWidth(304) == 96U);
-    assert(curvePreviewSampleCountForWidth(1000) == 96U);
-    std::cout << "[PASS] width-derived density is bounded at 96 samples\n";
+    assert(curvePreviewSampleCountForWidth(304) == 64U);
+    assert(curvePreviewSampleCountForWidth(1000) == 64U);
+    std::cout << "[PASS] width-derived density is bounded at 64 samples\n";
 }
 
 void testNormalizedMappingAndGuides() {
     using namespace ms::ui;
-    assert(curvePreviewPositionQ16(0U, 96U) == 0U);
-    assert(curvePreviewPositionQ16(95U, 96U) == 65535U);
+    assert(curvePreviewPositionQ16(0U, 64U) == 0U);
+    assert(curvePreviewPositionQ16(63U, 64U) == 65535U);
     assert(curvePreviewCoordinate(0U, 8, 304) == 8);
     assert(curvePreviewCoordinate(65535U, 8, 304) == 311);
     assert(curvePreviewY(0U, 20, 92) == 111);
@@ -59,13 +59,13 @@ void testGeometryAndDiscontinuity() {
     ms::ui::CurvePreviewGeometry geometry{};
     SampleContext context{};
     assert(geometry.rebuild(304, 92, sampleRamp, &context));
-    assert(geometry.sampleCount == 96U);
-    assert(context.calls == 96U);
+    assert(geometry.sampleCount == 64U);
+    assert(context.calls == 64U);
     assert(geometry.curve.front() == 0U);
-    assert(geometry.curve[95] == 65535U);
+    assert(geometry.curve[63] == 65535U);
     assert(geometry.base.front() == 16384U);
     assert(geometry.impact.front() == 65535U);
-    assert(geometry.impact[95] == 0U);
+    assert(geometry.impact[63] == 0U);
     assert(geometry.discontinuities.count() == 1U);
     std::size_t transition = geometry.sampleCount;
     for (std::size_t index = 1U; index < geometry.sampleCount; ++index) {
@@ -119,7 +119,7 @@ void testMarkerRectanglesStayClipped() {
 }  // namespace
 
 int main() {
-    static_assert(sizeof(ms::ui::CurvePreviewGeometry) <= 600U);
+    static_assert(sizeof(ms::ui::CurvePreviewGeometry) <= 400U);
     testWidthDerivedDensity();
     testNormalizedMappingAndGuides();
     testGeometryAndDiscontinuity();

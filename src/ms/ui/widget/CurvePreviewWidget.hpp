@@ -26,6 +26,8 @@ struct CurvePreviewWidgetProps {
     bool showCenterGuide = false;
     bool showRestGuide = false;
     uint16_t restValueQ16 = 0U;
+    lv_coord_t paddingX = 0;
+    lv_coord_t paddingY = 0;
 
     uint32_t curveColor = 0xFFFFFFU;
     uint32_t baseColor = 0xFFFFFFU;
@@ -86,11 +88,11 @@ private:
 };
 
 static_assert(
-    sizeof(CurvePreviewGeometry) <= 600U,
+    sizeof(CurvePreviewGeometry) <= 400U,
     "Curve preview retained geometry exceeds the accepted PSRAM budget"
 );
 static_assert(
-    sizeof(CurvePreviewWidget) <= 1536U,
+    sizeof(CurvePreviewWidget) <= 1280U,
     "Curve preview widget exceeds the accepted retained PSRAM budget"
 );
 
