@@ -8,8 +8,10 @@
 
 namespace ms::ui {
 
-inline constexpr std::size_t CURVE_PREVIEW_MAX_SAMPLE_COUNT = 64U;
-inline constexpr int32_t CURVE_PREVIEW_SAMPLE_PITCH_PX = 3;
+// MIDI Studio's native display is 320 pixels wide. Detailed authoring curves
+// retain one derived sample per drawable pixel; compact rows naturally request
+// fewer samples because their drawable width is smaller.
+inline constexpr std::size_t CURVE_PREVIEW_MAX_SAMPLE_COUNT = 320U;
 inline constexpr uint16_t CURVE_PREVIEW_NORMALIZED_MAX = 65535U;
 
 struct CurvePreviewSample {
@@ -40,12 +42,8 @@ struct CurvePreviewRect {
     int32_t width
 ) {
     if (width < 2) return 0U;
-    const auto intervals = static_cast<std::size_t>(
-        (width - 1 + CURVE_PREVIEW_SAMPLE_PITCH_PX - 1) /
-        CURVE_PREVIEW_SAMPLE_PITCH_PX
-    );
     return std::clamp<std::size_t>(
-        intervals + 1U,
+        static_cast<std::size_t>(width),
         2U,
         CURVE_PREVIEW_MAX_SAMPLE_COUNT
     );
@@ -122,7 +120,7 @@ struct CurvePreviewGeometry {
     std::array<uint16_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT> base{};
     std::array<uint16_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT> impact{};
     std::bitset<CURVE_PREVIEW_MAX_SAMPLE_COUNT> discontinuities{};
-    uint8_t sampleCount = 0U;
+    uint16_t sampleCount = 0U;
 
     void clear() {
         sampleCount = 0U;
@@ -155,7 +153,7 @@ struct CurvePreviewGeometry {
                 discontinuities[index] = true;
             }
         }
-        sampleCount = static_cast<uint8_t>(count);
+        sampleCount = static_cast<uint16_t>(count);
         return true;
     }
 };

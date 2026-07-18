@@ -67,13 +67,13 @@ FLASHMEM void drawGuide(
 
 FLASHMEM void populatePoints(
     const std::array<uint16_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT>& values,
-    uint8_t count,
+    uint16_t count,
     const lv_area_t& area,
     std::array<lv_point_precise_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT>& out
 ) {
     const int32_t width = lv_area_get_width(&area);
     const int32_t height = lv_area_get_height(&area);
-    for (uint8_t index = 0U; index < count; ++index) {
+    for (uint16_t index = 0U; index < count; ++index) {
         const uint16_t position = curvePreviewPositionQ16(index, count);
         out[index] = {
             static_cast<lv_value_precise_t>(curvePreviewCoordinate(
@@ -104,7 +104,7 @@ FLASHMEM void drawCurveWithDiscontinuities(
     populatePoints(geometry.curve, geometry.sampleCount, area, points);
     std::size_t runStart = 0U;
     for (std::size_t index = 1U; index < count; ++index) {
-        // index is bounded by geometry.sampleCount (max 64), so the unchecked
+        // index is bounded by geometry.sampleCount (native display width), so the unchecked
         // bitset accessor is both safe and avoids an exception-format string.
         if (!geometry.discontinuities[index]) continue;
         if (index - runStart >= 2U) {
@@ -149,22 +149,12 @@ FLASHMEM void drawImpactBand(
     const int32_t areaWidth = lv_area_get_width(&area);
     const int32_t areaHeight = lv_area_get_height(&area);
     for (std::size_t index = 0U; index < count; ++index) {
-        const auto next = std::min(index + 1U, count - 1U);
         const int32_t x = curvePreviewCoordinate(
             curvePreviewPositionQ16(index, count),
             area.x1,
             areaWidth
         );
-        const int32_t nextX = curvePreviewCoordinate(
-            curvePreviewPositionQ16(next, count),
-            area.x1,
-            areaWidth
-        );
-        const lv_coord_t width = static_cast<lv_coord_t>(
-            std::max<int32_t>(1, nextX - x + 1)
-        );
-        if (x + width < layer->_clip_area.x1 ||
-            x - width > layer->_clip_area.x2) {
+        if (x < layer->_clip_area.x1 || x > layer->_clip_area.x2) {
             continue;
         }
         std::array<lv_point_precise_t, 2> points{{
@@ -185,7 +175,7 @@ FLASHMEM void drawImpactBand(
                 )),
             },
         }};
-        drawLine(layer, points.data(), points.size(), color, opacity, width);
+        drawLine(layer, points.data(), points.size(), color, opacity, 1);
     }
 }
 
@@ -226,6 +216,7 @@ FLASHMEM CurvePreviewWidget::CurvePreviewWidget(lv_obj_t* parent) {
 }
 
 FLASHMEM CurvePreviewWidget::~CurvePreviewWidget() {
+    markerTimer_.reset();
     if (surface_ != nullptr) {
         lv_obj_delete(surface_);
         surface_ = nullptr;
@@ -241,6 +232,11 @@ FLASHMEM void CurvePreviewWidget::createUi(lv_obj_t* parent) {
     lv_obj_clear_flag(surface_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(surface_, onDrawEvent, LV_EVENT_DRAW_MAIN, this);
     lv_obj_add_flag(surface_, LV_OBJ_FLAG_HIDDEN);
+    markerTimer_.emplace(
+        MARKER_SERVICE_PERIOD_MS,
+        &CurvePreviewWidget::onMarkerTimer,
+        this
+    );
 }
 
 FLASHMEM bool CurvePreviewWidget::staticStyleChanged(
@@ -292,6 +288,53 @@ FLASHMEM void CurvePreviewWidget::invalidateMarker(
             .y2 = static_cast<lv_coord_t>(rect.y2),
         }
     );
+}
+
+FLASHMEM bool CurvePreviewWidget::sameMarkerPixel(
+    const CurvePreviewMarker& lhs,
+    const CurvePreviewMarker& rhs
+) const {
+    if (lhs.visible != rhs.visible) return false;
+    if (!lhs.visible) return true;
+    if (!renderedArea_ || !renderedProps_) return sameMarker(lhs, rhs);
+    const auto rectFor = [this](const CurvePreviewMarker& marker) {
+        return curvePreviewMarkerRect(
+            renderedArea_->x1,
+            renderedArea_->y1,
+            lv_area_get_width(&*renderedArea_),
+            lv_area_get_height(&*renderedArea_),
+            marker.positionQ16,
+            marker.valueQ16,
+            renderedProps_->markerRadius
+        );
+    };
+    const auto left = rectFor(lhs);
+    const auto right = rectFor(rhs);
+    return left.x1 == right.x1 && left.y1 == right.y1 &&
+           left.x2 == right.x2 && left.y2 == right.y2;
+}
+
+FLASHMEM void CurvePreviewWidget::serviceMarker() {
+    if (!visible_ || !rendered_ || !renderedProps_ ||
+        renderedProps_->markerProvider == nullptr) {
+        if (markerTimer_) markerTimer_->pause();
+        return;
+    }
+    if (!lv_obj_is_visible(surface_)) return;
+    CurvePreviewMarker next{};
+    if (!renderedProps_->markerProvider(
+            renderedProps_->markerContext,
+            next
+        )) {
+        next = {};
+    }
+    const CurvePreviewMarker previous = renderedProps_->marker;
+    const bool rasterChanged = !sameMarkerPixel(previous, next);
+    if (rasterChanged) invalidateMarker(previous);
+    // Always retain the latest sub-pixel value. A later movement is then
+    // compared with the true current marker rather than a stale coordinate.
+    renderedProps_->marker = next;
+    if (rasterChanged) invalidateMarker(next);
 }
 
 FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
@@ -373,12 +416,20 @@ FLASHMEM void CurvePreviewWidget::onDrawEvent(lv_event_t* event) {
     self->draw(lv_event_get_layer(event));
 }
 
+FLASHMEM void CurvePreviewWidget::onMarkerTimer(lv_timer_t* timer) {
+    auto* self = static_cast<CurvePreviewWidget*>(
+        lv_timer_get_user_data(timer)
+    );
+    if (self != nullptr) self->serviceMarker();
+}
+
 FLASHMEM void CurvePreviewWidget::render(
     const CurvePreviewWidgetProps& props
 ) {
     if (surface_ == nullptr) return;
     if (!props.visible) {
         if (visible_) {
+            if (markerTimer_) markerTimer_->pause();
             lv_obj_add_flag(surface_, LV_OBJ_FLAG_HIDDEN);
             visible_ = false;
             rendered_ = false;
@@ -412,10 +463,21 @@ FLASHMEM void CurvePreviewWidget::render(
         renderedProps_->sampleContext != props.sampleContext ||
         renderedProps_->geometryRevision != props.geometryRevision;
     const bool styleChanged = !rendered_ || staticStyleChanged(props);
+    CurvePreviewMarker resolvedMarker = props.marker;
+    if (props.markerProvider != nullptr &&
+        !props.markerProvider(props.markerContext, resolvedMarker)) {
+        resolvedMarker = {};
+    }
     const bool markerChanged = !rendered_ ||
-        !sameMarker(renderedProps_->marker, props.marker);
+        !sameMarkerPixel(renderedProps_->marker, resolvedMarker);
+    const bool markerServiceChanged = !rendered_ ||
+        renderedProps_->markerProvider != props.markerProvider ||
+        renderedProps_->markerContext != props.markerContext;
 
-    if (!geometryChanged && !styleChanged && !markerChanged) return;
+    if (!geometryChanged && !styleChanged && !markerChanged &&
+        !markerServiceChanged) {
+        return;
+    }
 
     const CurvePreviewMarker previousMarker = rendered_
         ? renderedProps_->marker
@@ -434,11 +496,19 @@ FLASHMEM void CurvePreviewWidget::render(
         invalidateMarker(previousMarker);
     }
     renderedProps_ = props;
+    renderedProps_->marker = resolvedMarker;
     rendered_ = true;
     if (fullInvalidation) {
         lv_obj_invalidate(surface_);
     } else if (markerChanged) {
-        invalidateMarker(props.marker);
+        invalidateMarker(resolvedMarker);
+    }
+    if (markerTimer_) {
+        if (props.markerProvider != nullptr) {
+            markerTimer_->resume();
+        } else {
+            markerTimer_->pause();
+        }
     }
 }
 

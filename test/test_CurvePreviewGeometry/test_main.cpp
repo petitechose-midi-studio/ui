@@ -35,18 +35,26 @@ void testWidthDerivedDensity() {
     assert(curvePreviewSampleCountForWidth(0) == 0U);
     assert(curvePreviewSampleCountForWidth(1) == 0U);
     assert(curvePreviewSampleCountForWidth(2) == 2U);
-    assert(curvePreviewSampleCountForWidth(180) == 61U);
-    assert(curvePreviewSampleCountForWidth(304) == 64U);
-    assert(curvePreviewSampleCountForWidth(1000) == 64U);
-    std::cout << "[PASS] width-derived density is bounded at 64 samples\n";
+    assert(curvePreviewSampleCountForWidth(180) == 180U);
+    assert(curvePreviewSampleCountForWidth(304) == 304U);
+    assert(curvePreviewSampleCountForWidth(320) == 320U);
+    assert(curvePreviewSampleCountForWidth(1000) == 320U);
+    std::cout << "[PASS] width-derived density is one column per native pixel\n";
 }
 
 void testNormalizedMappingAndGuides() {
     using namespace ms::ui;
-    assert(curvePreviewPositionQ16(0U, 64U) == 0U);
-    assert(curvePreviewPositionQ16(63U, 64U) == 65535U);
+    assert(curvePreviewPositionQ16(0U, 304U) == 0U);
+    assert(curvePreviewPositionQ16(303U, 304U) == 65535U);
     assert(curvePreviewCoordinate(0U, 8, 304) == 8);
     assert(curvePreviewCoordinate(65535U, 8, 304) == 311);
+    for (std::size_t index = 0U; index < 304U; ++index) {
+        assert(curvePreviewCoordinate(
+            curvePreviewPositionQ16(index, 304U),
+            8,
+            304
+        ) == static_cast<int32_t>(8U + index));
+    }
     assert(curvePreviewY(0U, 20, 92) == 111);
     assert(curvePreviewY(65535U, 20, 92) == 20);
     const int32_t center = curvePreviewY(32768U, 20, 92);
@@ -59,13 +67,13 @@ void testGeometryAndDiscontinuity() {
     ms::ui::CurvePreviewGeometry geometry{};
     SampleContext context{};
     assert(geometry.rebuild(304, 92, sampleRamp, &context));
-    assert(geometry.sampleCount == 64U);
-    assert(context.calls == 64U);
+    assert(geometry.sampleCount == 304U);
+    assert(context.calls == 304U);
     assert(geometry.curve.front() == 0U);
-    assert(geometry.curve[63] == 65535U);
+    assert(geometry.curve[303] == 65535U);
     assert(geometry.base.front() == 16384U);
     assert(geometry.impact.front() == 65535U);
-    assert(geometry.impact[63] == 0U);
+    assert(geometry.impact[303] == 0U);
     assert(geometry.discontinuities.count() == 1U);
     std::size_t transition = geometry.sampleCount;
     for (std::size_t index = 1U; index < geometry.sampleCount; ++index) {
@@ -112,6 +120,14 @@ void testMarkerRectanglesStayClipped() {
     assert(high.valid());
     assert(high.x1 == 308 && high.x2 == 311);
     assert(high.y1 == 20 && high.y2 == 23);
+    const auto subPixelA = curvePreviewMarkerRect(
+        8, 20, 304, 92, 10000U, 20000U, 3
+    );
+    const auto subPixelB = curvePreviewMarkerRect(
+        8, 20, 304, 92, 10001U, 20001U, 3
+    );
+    assert(subPixelA.x1 == subPixelB.x1 && subPixelA.x2 == subPixelB.x2);
+    assert(subPixelA.y1 == subPixelB.y1 && subPixelA.y2 == subPixelB.y2);
     assert(!curvePreviewMarkerRect(0, 0, 0, 10, 0U, 0U, 2).valid());
     std::cout << "[PASS] marker invalidation rectangles are exact and clipped\n";
 }
@@ -119,7 +135,7 @@ void testMarkerRectanglesStayClipped() {
 }  // namespace
 
 int main() {
-    static_assert(sizeof(ms::ui::CurvePreviewGeometry) <= 400U);
+    static_assert(sizeof(ms::ui::CurvePreviewGeometry) <= 2048U);
     testWidthDerivedDensity();
     testNormalizedMappingAndGuides();
     testGeometryAndDiscontinuity();

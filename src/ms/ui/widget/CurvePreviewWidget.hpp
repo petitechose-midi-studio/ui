@@ -4,6 +4,7 @@
 #include <optional>
 
 #include <lvgl.h>
+#include <oc/ui/lvgl/PausableTimer.hpp>
 
 #include <ms/ui/widget/CurvePreviewGeometry.hpp>
 
@@ -15,11 +16,18 @@ struct CurvePreviewMarker {
     uint16_t valueQ16 = 0U;
 };
 
+using CurvePreviewMarkerProvider = bool (*)(
+    void* context,
+    CurvePreviewMarker& out
+);
+
 struct CurvePreviewWidgetProps {
     bool visible = false;
     CurvePreviewSampleProvider sampleProvider = nullptr;
     void* sampleContext = nullptr;
     uint32_t geometryRevision = 0U;
+    CurvePreviewMarkerProvider markerProvider = nullptr;
+    void* markerContext = nullptr;
 
     bool showImpactBand = false;
     bool showCenterGuide = false;
@@ -63,18 +71,26 @@ public:
     void render(const CurvePreviewWidgetProps& props);
     [[nodiscard]] lv_obj_t* getElement() const { return surface_; }
 
-    [[nodiscard]] uint8_t activeSampleCount() const {
+    [[nodiscard]] uint16_t activeSampleCount() const {
         return geometry_.sampleCount;
     }
 
 private:
+    static constexpr uint32_t MARKER_SERVICE_PERIOD_MS = 1U;
+
     void createUi(lv_obj_t* parent);
     void draw(lv_layer_t* layer);
     void invalidateMarker(const CurvePreviewMarker& marker) const;
+    void serviceMarker();
+    [[nodiscard]] bool sameMarkerPixel(
+        const CurvePreviewMarker& lhs,
+        const CurvePreviewMarker& rhs
+    ) const;
     [[nodiscard]] bool staticStyleChanged(
         const CurvePreviewWidgetProps& props
     ) const;
     static void onDrawEvent(lv_event_t* event);
+    static void onMarkerTimer(lv_timer_t* timer);
 
     lv_obj_t* surface_ = nullptr;
     CurvePreviewGeometry geometry_{};
@@ -85,16 +101,17 @@ private:
     // optional keeps that cold cache entirely inside the PSRAM-owned widget.
     std::optional<CurvePreviewWidgetProps> renderedProps_{};
     std::optional<lv_area_t> renderedArea_{};
+    std::optional<oc::ui::lvgl::PausableTimer> markerTimer_{};
     bool rendered_ = false;
     bool visible_ = false;
 };
 
 static_assert(
-    sizeof(CurvePreviewGeometry) <= 400U,
+    sizeof(CurvePreviewGeometry) <= 2048U,
     "Curve preview retained geometry exceeds the accepted PSRAM budget"
 );
 static_assert(
-    sizeof(CurvePreviewWidget) <= 1280U,
+    sizeof(CurvePreviewWidget) <= 8192U,
     "Curve preview widget exceeds the accepted retained PSRAM budget"
 );
 
