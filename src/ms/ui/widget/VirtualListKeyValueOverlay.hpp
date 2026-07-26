@@ -14,20 +14,11 @@
 #include <oc/ui/lvgl/widget/VirtualList.hpp>
 
 #include <ms/ui/component/VirtualListOverlay.hpp>
+#include <ms/ui/widget/KeyValueSparkline.hpp>
 
 namespace ms::ui {
 
-static constexpr size_t KEY_VALUE_SPARKLINE_SAMPLE_COUNT = 12;
 static constexpr size_t KEY_VALUE_ROW_TEXT_CAPACITY = 48;
-
-struct KeyValueSparkline {
-    bool enabled = false;
-    bool centerLine = false;
-    bool liveMarker = false;
-    uint8_t sampleCount = 0;
-    uint8_t liveValue = 0;
-    std::array<uint8_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> samples{};
-};
 
 struct KeyValueRow {
     const char* key = "";
@@ -122,8 +113,7 @@ private:
         lv_obj_t* keyLabel = nullptr;
         lv_obj_t* valueLabel = nullptr;
         lv_obj_t* detailLabel = nullptr;
-        lv_obj_t* sparklineLine = nullptr;
-        lv_obj_t* sparklineCenterLine = nullptr;
+        lv_obj_t* sparklineSurface = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         bool dimUnselected = true;
@@ -135,8 +125,8 @@ private:
         const lv_font_t* iconFont = nullptr;
         uint32_t iconColor = 0;
         bool sparklineVisible = false;
-        std::array<lv_point_precise_t, KEY_VALUE_SPARKLINE_SAMPLE_COUNT> sparklinePoints{};
-        std::array<lv_point_precise_t, 2> sparklineAuxPoints{};
+        KeyValueSparkline sparkline{};
+        KeyValueSparklineMarker marker{};
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
@@ -145,6 +135,10 @@ private:
     void applyCompactLayout(SlotWidgets& widgets);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
     void applySparkline(SlotWidgets& widgets, const RowCache& row);
+    void serviceSparklineMarkers();
+    void refreshSparklineMarkerTimer();
+    static void onSparklineDrawEvent(lv_event_t* event);
+    static void onSparklineMarkerTimer(lv_timer_t* timer);
     const RowCache& materializeProviderRow(int index);
     void syncRows(const VirtualListKeyValueOverlayProps& props,
                   std::array<int, MAX_ROWS>& dirtyIndices,
@@ -168,6 +162,8 @@ private:
     int row_count_ = 0;
     bool dim_unselected_ = true;
     bool compact_facts_ = false;
+    bool visible_ = false;
+    lv_timer_t* marker_timer_ = nullptr;
 };
 
 }  // namespace ms::ui

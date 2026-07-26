@@ -21,6 +21,19 @@ struct CurvePreviewSample {
     bool discontinuityBefore = false;
 };
 
+/**
+ * Minimum retained-geometry mutation announced by a sample owner.
+ *
+ * REBUILD is the safe default for authored curves. PATCH_LAST and ADVANCE are
+ * reserved for pixel-bucketed rolling traces whose logical samples move in
+ * lockstep with the retained screen columns.
+ */
+enum class CurvePreviewGeometryUpdate : uint8_t {
+    REBUILD = 0,
+    PATCH_LAST,
+    ADVANCE,
+};
+
 using CurvePreviewSampleProvider = bool (*)(
     void* context,
     uint16_t positionQ16,
@@ -35,6 +48,16 @@ struct CurvePreviewRect {
 
     [[nodiscard]] constexpr bool valid() const {
         return x1 <= x2 && y1 <= y2;
+    }
+};
+
+struct CurvePreviewSampleRange {
+    std::size_t begin = 0U;
+    std::size_t end = 0U;
+
+    [[nodiscard]] constexpr bool empty() const { return begin >= end; }
+    [[nodiscard]] constexpr std::size_t size() const {
+        return empty() ? 0U : end - begin;
     }
 };
 
@@ -86,6 +109,50 @@ struct CurvePreviewRect {
         originY,
         height
     );
+}
+
+/**
+ * Resolve the smallest sample range needed to draw an X clip. One neighbour
+ * is retained on each side so line segments crossing the clip boundary remain
+ * continuous. This lets marker-only invalidations transform a handful of
+ * samples instead of rebuilding every display column.
+ */
+[[nodiscard]] constexpr CurvePreviewSampleRange curvePreviewSampleRangeForClip(
+    int32_t originX,
+    int32_t width,
+    std::size_t sampleCount,
+    int32_t clipX1,
+    int32_t clipX2
+) {
+    if (width < 2 || sampleCount < 2U || clipX1 > clipX2 ||
+        clipX2 < originX || clipX1 >= originX + width) {
+        return {};
+    }
+    const int32_t lastPixel = width - 1;
+    const int32_t clippedX1 = std::clamp(
+        clipX1 - originX,
+        int32_t{0},
+        lastPixel
+    );
+    const int32_t clippedX2 = std::clamp(
+        clipX2 - originX,
+        int32_t{0},
+        lastPixel
+    );
+    const auto lastSample = sampleCount - 1U;
+    const auto first = static_cast<std::size_t>(
+        (static_cast<uint64_t>(clippedX1) * lastSample) /
+        static_cast<uint64_t>(lastPixel)
+    );
+    const auto last = static_cast<std::size_t>(
+        (static_cast<uint64_t>(clippedX2) * lastSample +
+         static_cast<uint64_t>(lastPixel - 1)) /
+        static_cast<uint64_t>(lastPixel)
+    );
+    return {
+        .begin = first > 0U ? first - 1U : 0U,
+        .end = std::min(sampleCount, last + 2U),
+    };
 }
 
 [[nodiscard]] constexpr CurvePreviewRect curvePreviewMarkerRect(
@@ -154,6 +221,78 @@ struct CurvePreviewGeometry {
             }
         }
         sampleCount = static_cast<uint16_t>(count);
+        return true;
+    }
+
+    [[nodiscard]] bool patchLast(
+        CurvePreviewSampleProvider provider,
+        void* context
+    ) {
+        if (sampleCount < 2U || provider == nullptr) return false;
+        return replaceSample(sampleCount - 1U, provider, context);
+    }
+
+    /**
+     * Shift a rolling trace left and sample only the newly exposed columns.
+     * The caller must request a full rebuild when the provider is not a
+     * pixel-aligned rolling trace or when advanceCount spans the full surface.
+     */
+    [[nodiscard]] bool advance(
+        uint16_t advanceCount,
+        CurvePreviewSampleProvider provider,
+        void* context
+    ) {
+        if (sampleCount < 2U || provider == nullptr || advanceCount == 0U ||
+            advanceCount >= sampleCount) {
+            return false;
+        }
+        const std::size_t retained = sampleCount - advanceCount;
+        std::move(
+            curve.begin() + advanceCount,
+            curve.begin() + sampleCount,
+            curve.begin()
+        );
+        std::move(
+            base.begin() + advanceCount,
+            base.begin() + sampleCount,
+            base.begin()
+        );
+        std::move(
+            impact.begin() + advanceCount,
+            impact.begin() + sampleCount,
+            impact.begin()
+        );
+        for (std::size_t index = 0U; index < retained; ++index) {
+            discontinuities[index] =
+                discontinuities[index + advanceCount];
+        }
+        for (std::size_t index = retained; index < sampleCount; ++index) {
+            discontinuities[index] = false;
+            if (!replaceSample(index, provider, context)) return false;
+        }
+        discontinuities[0] = false;
+        return true;
+    }
+
+private:
+    [[nodiscard]] bool replaceSample(
+        std::size_t index,
+        CurvePreviewSampleProvider provider,
+        void* context
+    ) {
+        if (index >= sampleCount || provider == nullptr) return false;
+        CurvePreviewSample sample{};
+        if (!provider(
+                context,
+                curvePreviewPositionQ16(index, sampleCount),
+                sample
+            )) {
+            return false;
+        }
+        curve[index] = sample.curve;
+        base[index] = sample.base;
+        impact[index] = sample.impact;
+        discontinuities[index] = index > 0U && sample.discontinuityBefore;
         return true;
     }
 };

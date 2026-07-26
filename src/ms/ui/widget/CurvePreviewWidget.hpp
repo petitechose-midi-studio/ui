@@ -26,13 +26,18 @@ struct CurvePreviewWidgetProps {
     CurvePreviewSampleProvider sampleProvider = nullptr;
     void* sampleContext = nullptr;
     uint32_t geometryRevision = 0U;
+    CurvePreviewGeometryUpdate geometryUpdate =
+        CurvePreviewGeometryUpdate::REBUILD;
+    uint16_t geometryAdvance = 0U;
     CurvePreviewMarkerProvider markerProvider = nullptr;
     void* markerContext = nullptr;
 
     bool showImpactBand = false;
     bool showCenterGuide = false;
     bool showRestGuide = false;
+    bool showVerticalGuide = false;
     uint16_t restValueQ16 = 0U;
+    uint16_t verticalGuidePositionQ16 = 0U;
     lv_coord_t paddingX = 0;
     lv_coord_t paddingY = 0;
 
@@ -69,6 +74,15 @@ public:
     CurvePreviewWidget& operator=(const CurvePreviewWidget&) = delete;
 
     void render(const CurvePreviewWidgetProps& props);
+    /**
+     * Hot rolling-trace path. Updates retained columns and invalidation only;
+     * it never resolves layout, styles or marker providers.
+     */
+    [[nodiscard]] bool updateRollingGeometry(
+        uint32_t geometryRevision,
+        CurvePreviewGeometryUpdate update,
+        uint16_t advanceCount = 0U
+    );
     [[nodiscard]] lv_obj_t* getElement() const { return surface_; }
 
     [[nodiscard]] uint16_t activeSampleCount() const {
@@ -80,6 +94,7 @@ private:
 
     void createUi(lv_obj_t* parent);
     void draw(lv_layer_t* layer);
+    void invalidateTail() const;
     void invalidateMarker(const CurvePreviewMarker& marker) const;
     void serviceMarker();
     [[nodiscard]] bool sameMarkerPixel(
@@ -90,6 +105,7 @@ private:
         const CurvePreviewWidgetProps& props
     ) const;
     static void onDrawEvent(lv_event_t* event);
+    static void onSizeChangedEvent(lv_event_t* event);
     static void onMarkerTimer(lv_timer_t* timer);
 
     lv_obj_t* surface_ = nullptr;
@@ -104,6 +120,7 @@ private:
     std::optional<oc::ui::lvgl::PausableTimer> markerTimer_{};
     bool rendered_ = false;
     bool visible_ = false;
+    bool layout_dirty_ = true;
 };
 
 static_assert(

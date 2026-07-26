@@ -17,6 +17,7 @@ namespace style = oc::ui::lvgl::style;
 namespace {
 
 constexpr lv_coord_t HEADER_HEIGHT = 32;
+constexpr lv_coord_t STACKED_HEADER_HEIGHT = 40;
 constexpr lv_coord_t ITEM_HEIGHT = 28;
 constexpr lv_coord_t HEADER_PAD_LEFT = 16;
 constexpr lv_coord_t HEADER_PAD_RIGHT = 8;
@@ -242,6 +243,7 @@ FLASHMEM void MenuListView::invalidateDirtyRows(
 FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
     if (!container_) return;
 
+    applyHeaderLayout(props.headerLayout);
     setLabelTextIfChanged(title_, title_cache_, props.title);
     setLabelTextIfChanged(meta_, meta_cache_, props.meta);
 
@@ -256,6 +258,33 @@ FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
             invalidateDirtyRows(dirtyIndices, dirtyCount);
         }
     }
+}
+
+FLASHMEM void MenuListView::applyHeaderLayout(MenuListHeaderLayout layout) {
+    if (!header_ || !title_ || !meta_) return;
+    if (header_layout_applied_ && header_layout_ == layout) return;
+
+    const bool stacked = layout == MenuListHeaderLayout::Stacked;
+    lv_obj_set_height(header_, stacked ? STACKED_HEADER_HEIGHT : HEADER_HEIGHT);
+    lv_obj_set_flex_flow(header_, stacked ? LV_FLEX_FLOW_COLUMN : LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        header_,
+        LV_FLEX_ALIGN_START,
+        stacked ? LV_FLEX_ALIGN_START : LV_FLEX_ALIGN_CENTER,
+        stacked ? LV_FLEX_ALIGN_START : LV_FLEX_ALIGN_CENTER
+    );
+    lv_obj_set_style_pad_column(header_, stacked ? 0 : 12, 0);
+    lv_obj_set_style_pad_row(header_, 0, 0);
+    lv_obj_set_style_pad_top(header_, stacked ? 2 : 0, 0);
+    lv_obj_set_style_pad_bottom(header_, stacked ? 2 : 0, 0);
+
+    lv_obj_set_flex_grow(title_, 0);
+    lv_obj_set_width(title_, stacked ? LV_PCT(100) : 132);
+    lv_obj_set_flex_grow(meta_, stacked ? 0 : 1);
+    lv_obj_set_width(meta_, stacked ? LV_PCT(100) : 0);
+
+    header_layout_ = layout;
+    header_layout_applied_ = true;
 }
 
 FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {

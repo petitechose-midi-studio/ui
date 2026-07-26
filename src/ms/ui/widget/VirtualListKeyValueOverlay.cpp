@@ -27,6 +27,66 @@ constexpr int COMPACT_COL_GAP = 4;
 constexpr int COMPACT_ICON_COL_W = 14;
 constexpr int COMPACT_DETAIL_COL_W = 78;
 constexpr int COMPACT_SPARKLINE_W = 58;
+constexpr uint32_t SPARKLINE_MARKER_PERIOD_MS = 4U;
+
+FLASHMEM bool sameMarker(
+    const KeyValueSparklineMarker& lhs,
+    const KeyValueSparklineMarker& rhs
+) {
+    return lhs.visible == rhs.visible &&
+        lhs.positionQ16 == rhs.positionQ16 &&
+        lhs.valueQ16 == rhs.valueQ16;
+}
+
+FLASHMEM bool sameArea(const lv_area_t& lhs, const lv_area_t& rhs) {
+    return lhs.x1 == rhs.x1 && lhs.y1 == rhs.y1 &&
+        lhs.x2 == rhs.x2 && lhs.y2 == rhs.y2;
+}
+
+FLASHMEM void drawLine(
+    lv_layer_t* layer,
+    lv_point_precise_t* points,
+    uint32_t count,
+    uint32_t color,
+    lv_opa_t opacity,
+    lv_coord_t width
+) {
+    if (!layer || !points || count < 2U || opacity == LV_OPA_TRANSP ||
+        width <= 0) {
+        return;
+    }
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.base.layer = layer;
+    dsc.points = points;
+    dsc.point_cnt = count;
+    dsc.color = lv_color_hex(color);
+    dsc.opa = opacity;
+    dsc.width = width;
+    lv_draw_line(layer, &dsc);
+}
+
+FLASHMEM lv_area_t markerDamageArea(
+    lv_obj_t* surface,
+    const KeyValueSparklineMarker& marker
+) {
+    lv_area_t surfaceArea{};
+    lv_obj_get_coords(surface, &surfaceArea);
+    const int width = lv_area_get_width(&surfaceArea);
+    const int height = lv_area_get_height(&surfaceArea);
+    const int x = surfaceArea.x1 + keyValueSparklineCoordinate(
+        marker.positionQ16,
+        width
+    );
+    const int y = surfaceArea.y1 + (height - 1) -
+        keyValueSparklineCoordinate(marker.valueQ16, height);
+    return {
+        static_cast<lv_coord_t>(x - 3),
+        static_cast<lv_coord_t>(y - 4),
+        static_cast<lv_coord_t>(x + 3),
+        static_cast<lv_coord_t>(y + 4),
+    };
+}
 }
 
 FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent)
@@ -53,6 +113,10 @@ FLASHMEM VirtualListKeyValueOverlay::VirtualListKeyValueOverlay(lv_obj_t* parent
 }
 
 FLASHMEM VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
+    if (marker_timer_) {
+        lv_timer_delete(marker_timer_);
+        marker_timer_ = nullptr;
+    }
     // Overlay owns LVGL objects; VirtualListOverlay handles deletion.
 }
 
@@ -73,29 +137,19 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
     KeyValueSparkline& cache,
     const KeyValueSparkline& next
 ) {
-    const uint8_t nextCount = next.enabled
-        ? static_cast<uint8_t>(std::min<size_t>(
-              next.sampleCount,
-              KEY_VALUE_SPARKLINE_SAMPLE_COUNT
-          ))
-        : 0U;
-    bool changed = cache.enabled != next.enabled ||
-        cache.centerLine != next.centerLine ||
-        cache.liveMarker != next.liveMarker ||
-        cache.liveValue != next.liveValue ||
-        cache.sampleCount != nextCount;
-    for (size_t i = 0; i < KEY_VALUE_SPARKLINE_SAMPLE_COUNT; ++i) {
-        const uint8_t nextValue = i < nextCount ? next.samples[i] : 0U;
-        if (cache.samples[i] != nextValue) {
-            changed = true;
-            cache.samples[i] = nextValue;
-        }
-    }
-    cache.enabled = next.enabled && nextCount >= 2U;
-    cache.centerLine = cache.enabled && next.centerLine;
-    cache.liveMarker = cache.enabled && next.liveMarker;
-    cache.liveValue = next.liveValue;
-    cache.sampleCount = cache.enabled ? nextCount : 0U;
+    const bool enabled = next.enabled && next.sampleProvider != nullptr;
+    const bool changed = cache.enabled != enabled ||
+        cache.centerLine != (enabled && next.centerLine) ||
+        cache.context != next.context ||
+        cache.identity != next.identity ||
+        cache.geometryRevision != next.geometryRevision ||
+        cache.runtimeIndex != next.runtimeIndex ||
+        cache.sampleProvider != next.sampleProvider ||
+        cache.markerProvider != next.markerProvider;
+    cache = next;
+    cache.enabled = enabled;
+    cache.centerLine = enabled && next.centerLine;
+    if (!enabled) cache.markerProvider = nullptr;
     return changed;
 }
 
@@ -176,9 +230,12 @@ FLASHMEM void VirtualListKeyValueOverlay::invalidateDirtyRows(
 
 FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverlayProps& props) {
     if (!props.visible) {
+        visible_ = false;
+        if (marker_timer_) lv_timer_pause(marker_timer_);
         overlay_.hide();
         return;
     }
+    visible_ = true;
 
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
@@ -240,6 +297,7 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
     if (!overlay_.isVisible()) {
         overlay_.show();
     }
+    refreshSparklineMarkerTimer();
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::bindSlot(widget::VirtualSlot& slot, int index, bool isSelected) {
@@ -378,45 +436,38 @@ FLASHMEM void VirtualListKeyValueOverlay::ensureSlotWidgets(lv_obj_t* container,
     lv_obj_set_style_text_font(widgets.valueLabel, valueFont, LV_STATE_DEFAULT);
     lv_obj_set_height(widgets.valueLabel, lv_font_get_line_height(valueFont));
 
-    widgets.sparklineLine = lv_line_create(container);
-    lv_obj_set_size(widgets.sparklineLine, VALUE_COL_W, SPARKLINE_H);
-    lv_obj_set_style_line_width(widgets.sparklineLine, 2, LV_STATE_DEFAULT);
-    lv_obj_set_style_line_rounded(widgets.sparklineLine, true, LV_STATE_DEFAULT);
-    lv_obj_set_style_line_color(
-        widgets.sparklineLine,
-        lv_color_hex(base_theme::color::ACTIVE),
+    widgets.sparklineSurface = lv_obj_create(container);
+    lv_obj_set_size(widgets.sparklineSurface, VALUE_COL_W, SPARKLINE_H);
+    lv_obj_set_style_bg_opa(
+        widgets.sparklineSurface,
+        LV_OPA_TRANSP,
         LV_STATE_DEFAULT
     );
-    lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
-
-    widgets.sparklineCenterLine = lv_line_create(widgets.sparklineLine);
-    if (widgets.sparklineCenterLine) {
-        lv_obj_set_size(
-            widgets.sparklineCenterLine,
-            VALUE_COL_W,
-            SPARKLINE_H
-        );
-        lv_obj_set_style_line_width(
-            widgets.sparklineCenterLine,
-            1,
-            LV_STATE_DEFAULT
-        );
-        lv_obj_set_style_line_color(
-            widgets.sparklineCenterLine,
-            lv_color_hex(base_theme::color::INACTIVE_LIGHTER),
-            LV_STATE_DEFAULT
-        );
-        lv_obj_set_style_line_opa(
-            widgets.sparklineCenterLine,
-            LV_OPA_40,
-            LV_STATE_DEFAULT
-        );
-        lv_obj_add_flag(
-            widgets.sparklineCenterLine,
-            LV_OBJ_FLAG_IGNORE_LAYOUT
-        );
-        lv_obj_add_flag(widgets.sparklineCenterLine, LV_OBJ_FLAG_HIDDEN);
-    }
+    lv_obj_set_style_border_width(
+        widgets.sparklineSurface,
+        0,
+        LV_STATE_DEFAULT
+    );
+    lv_obj_set_style_pad_all(
+        widgets.sparklineSurface,
+        0,
+        LV_STATE_DEFAULT
+    );
+    lv_obj_remove_flag(
+        widgets.sparklineSurface,
+        LV_OBJ_FLAG_SCROLLABLE
+    );
+    lv_obj_remove_flag(
+        widgets.sparklineSurface,
+        LV_OBJ_FLAG_CLICKABLE
+    );
+    lv_obj_add_event_cb(
+        widgets.sparklineSurface,
+        onSparklineDrawEvent,
+        LV_EVENT_DRAW_MAIN,
+        &widgets
+    );
+    lv_obj_add_flag(widgets.sparklineSurface, LV_OBJ_FLAG_HIDDEN);
 
     widgets.created = true;
     applyCompactLayout(widgets);
@@ -457,15 +508,9 @@ FLASHMEM void VirtualListKeyValueOverlay::applyCompactLayout(SlotWidgets& widget
             compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
         );
     }
-    if (widgets.sparklineLine) {
+    if (widgets.sparklineSurface) {
         lv_obj_set_width(
-            widgets.sparklineLine,
-            compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
-        );
-    }
-    if (widgets.sparklineCenterLine) {
-        lv_obj_set_width(
-            widgets.sparklineCenterLine,
+            widgets.sparklineSurface,
             compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W
         );
     }
@@ -475,7 +520,8 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
     SlotWidgets& widgets,
     const RowCache& row
 ) {
-    const bool showSparkline = row.sparkline.enabled && row.sparkline.sampleCount >= 2U;
+    const bool showSparkline =
+        row.sparkline.enabled && row.sparkline.sampleProvider != nullptr;
     if (widgets.valueLabel) {
         if (showSparkline) {
             lv_obj_add_flag(widgets.valueLabel, LV_OBJ_FLAG_HIDDEN);
@@ -483,114 +529,253 @@ FLASHMEM void VirtualListKeyValueOverlay::applySparkline(
             lv_obj_clear_flag(widgets.valueLabel, LV_OBJ_FLAG_HIDDEN);
         }
     }
-    if (!widgets.sparklineLine) return;
+    if (!widgets.sparklineSurface) return;
 
     if (!showSparkline) {
         if (widgets.sparklineVisible) {
-            lv_obj_add_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(widgets.sparklineSurface, LV_OBJ_FLAG_HIDDEN);
             widgets.sparklineVisible = false;
         }
-        if (widgets.sparklineCenterLine) {
-            lv_obj_add_flag(
-                widgets.sparklineCenterLine,
-                LV_OBJ_FLAG_HIDDEN
-            );
-        }
+        widgets.sparkline = {};
+        widgets.marker = {};
+        refreshSparklineMarkerTimer();
         return;
     }
 
-    const uint8_t count = static_cast<uint8_t>(std::min<size_t>(
-        row.sparkline.sampleCount,
-        KEY_VALUE_SPARKLINE_SAMPLE_COUNT
-    ));
-    const int width = (compact_facts_ ? COMPACT_SPARKLINE_W : VALUE_COL_W) - 1;
-    const int height = SPARKLINE_H - 1;
-    for (uint8_t i = 0; i < count; ++i) {
-        const uint8_t sample = row.sparkline.samples[i];
-        widgets.sparklinePoints[i].x =
-            static_cast<lv_value_precise_t>((static_cast<int>(i) * width) / (count - 1));
-        widgets.sparklinePoints[i].y =
-            static_cast<lv_value_precise_t>(height - ((static_cast<int>(sample) * height) / 255));
+    const bool geometryChanged = copySparklineIfChanged(
+        widgets.sparkline,
+        row.sparkline
+    );
+    if (geometryChanged || !widgets.sparklineVisible) {
+        widgets.marker = {};
+        lv_obj_invalidate(widgets.sparklineSurface);
     }
-    lv_line_set_points(widgets.sparklineLine, widgets.sparklinePoints.data(), count);
-    lv_obj_clear_flag(widgets.sparklineLine, LV_OBJ_FLAG_HIDDEN);
-    if (widgets.sparklineCenterLine) {
-        if (row.sparkline.liveMarker) {
-            const int markerY = height -
-                ((static_cast<int>(row.sparkline.liveValue) * height) / 255);
-            widgets.sparklineAuxPoints[0] = {
-                static_cast<lv_value_precise_t>(width),
-                static_cast<lv_value_precise_t>(std::max(0, markerY - 2)),
-            };
-            widgets.sparklineAuxPoints[1] = {
-                static_cast<lv_value_precise_t>(width),
-                static_cast<lv_value_precise_t>(std::min(height, markerY + 2)),
-            };
-            lv_line_set_points(
-                widgets.sparklineCenterLine,
-                widgets.sparklineAuxPoints.data(),
-                widgets.sparklineAuxPoints.size()
-            );
-            lv_obj_set_style_line_width(
-                widgets.sparklineCenterLine,
-                2,
-                LV_STATE_DEFAULT
-            );
-            lv_obj_set_style_line_color(
-                widgets.sparklineCenterLine,
-                lv_color_hex(base_theme::color::ACTIVE),
-                LV_STATE_DEFAULT
-            );
-            lv_obj_set_style_line_opa(
-                widgets.sparklineCenterLine,
+    lv_obj_clear_flag(widgets.sparklineSurface, LV_OBJ_FLAG_HIDDEN);
+    widgets.sparklineVisible = true;
+    if (widgets.sparkline.markerProvider != nullptr && marker_timer_ == nullptr) {
+        marker_timer_ = lv_timer_create(
+            onSparklineMarkerTimer,
+            SPARKLINE_MARKER_PERIOD_MS,
+            this
+        );
+        if (marker_timer_) lv_timer_pause(marker_timer_);
+    }
+    refreshSparklineMarkerTimer();
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::onSparklineDrawEvent(
+    lv_event_t* event
+) {
+    auto* widgets = static_cast<SlotWidgets*>(lv_event_get_user_data(event));
+    auto* layer = lv_event_get_layer(event);
+    if (!widgets || !layer || !widgets->sparklineSurface ||
+        !widgets->sparklineVisible || !widgets->sparkline.enabled ||
+        widgets->sparkline.sampleProvider == nullptr) {
+        return;
+    }
+
+    lv_area_t area{};
+    lv_obj_get_coords(widgets->sparklineSurface, &area);
+    const int width = std::min<int>(
+        lv_area_get_width(&area),
+        KEY_VALUE_SPARKLINE_MAX_WIDTH
+    );
+    const int height = lv_area_get_height(&area);
+    if (width < 2 || height < 2) return;
+
+    if (widgets->sparkline.centerLine) {
+        std::array<lv_point_precise_t, 2> guide{{
+            {
+                static_cast<lv_value_precise_t>(area.x1),
+                static_cast<lv_value_precise_t>(area.y1 + (height - 1) / 2),
+            },
+            {
+                static_cast<lv_value_precise_t>(area.x1 + width - 1),
+                static_cast<lv_value_precise_t>(area.y1 + (height - 1) / 2),
+            },
+        }};
+        drawLine(
+            layer,
+            guide.data(),
+            guide.size(),
+            base_theme::color::INACTIVE_LIGHTER,
+            LV_OPA_40,
+            1
+        );
+    }
+
+    const auto range = keyValueSparklineColumnsForClip(
+        area.x1,
+        width,
+        layer->_clip_area.x1,
+        layer->_clip_area.x2
+    );
+    if (!range.empty()) {
+        std::array<
+            lv_point_precise_t,
+            KEY_VALUE_SPARKLINE_DRAW_CHUNK
+        > points{};
+        std::size_t pointCount = 0U;
+        auto flush = [&]() {
+            drawLine(
+                layer,
+                points.data(),
+                static_cast<uint32_t>(pointCount),
+                base_theme::color::ACTIVE,
                 LV_OPA_COVER,
-                LV_STATE_DEFAULT
+                2
             );
-            lv_obj_clear_flag(
-                widgets.sparklineCenterLine,
-                LV_OBJ_FLAG_HIDDEN
+        };
+        for (std::size_t column = range.begin; column < range.end; ++column) {
+            const uint16_t positionQ16 = keyValueSparklinePositionQ16(
+                column,
+                static_cast<std::size_t>(width)
             );
-        } else if (row.sparkline.centerLine) {
-            widgets.sparklineAuxPoints[0] = {
-                0,
-                static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
+            const uint16_t previousPositionQ16 = column > 0U
+                ? keyValueSparklinePositionQ16(
+                      column - 1U,
+                      static_cast<std::size_t>(width)
+                  )
+                : 0U;
+            KeyValueSparklineSample sample{};
+            if (!widgets->sparkline.sampleProvider(
+                    widgets->sparkline,
+                    positionQ16,
+                    previousPositionQ16,
+                    column > 0U,
+                    sample
+                )) {
+                flush();
+                pointCount = 0U;
+                continue;
+            }
+            if (sample.discontinuityBefore && pointCount > 0U) {
+                flush();
+                pointCount = 0U;
+            }
+            points[pointCount++] = {
+                static_cast<lv_value_precise_t>(area.x1 +
+                    static_cast<int>(column)),
+                static_cast<lv_value_precise_t>(area.y1 + height - 1 -
+                    keyValueSparklineCoordinate(sample.valueQ16, height)),
             };
-            widgets.sparklineAuxPoints[1] = {
-                static_cast<lv_value_precise_t>(width),
-                static_cast<lv_value_precise_t>(SPARKLINE_H / 2),
-            };
-            lv_line_set_points(
-                widgets.sparklineCenterLine,
-                widgets.sparklineAuxPoints.data(),
-                widgets.sparklineAuxPoints.size()
+            if (pointCount == points.size()) {
+                flush();
+                points[0] = points[pointCount - 1U];
+                pointCount = 1U;
+            }
+        }
+        flush();
+    }
+
+    if (widgets->marker.visible) {
+        const int markerX = area.x1 + keyValueSparklineCoordinate(
+            widgets->marker.positionQ16,
+            width
+        );
+        const int markerY = area.y1 + height - 1 -
+            keyValueSparklineCoordinate(widgets->marker.valueQ16, height);
+        std::array<lv_point_precise_t, 2> marker{{
+            {
+                static_cast<lv_value_precise_t>(markerX),
+                static_cast<lv_value_precise_t>(std::max<int32_t>(
+                    area.y1,
+                    static_cast<int32_t>(markerY - 3)
+                )),
+            },
+            {
+                static_cast<lv_value_precise_t>(markerX),
+                static_cast<lv_value_precise_t>(std::min<int32_t>(
+                    area.y2,
+                    static_cast<int32_t>(markerY + 3)
+                )),
+            },
+        }};
+        drawLine(
+            layer,
+            marker.data(),
+            marker.size(),
+            base_theme::color::ACTIVE,
+            LV_OPA_COVER,
+            2
+        );
+    }
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::serviceSparklineMarkers() {
+    const uint32_t nowMs = lv_tick_get();
+    for (auto& widgets : slot_widgets_) {
+        if (!widgets.sparklineVisible || !widgets.sparklineSurface ||
+            widgets.sparkline.markerProvider == nullptr) {
+            continue;
+        }
+        KeyValueSparklineMarker next{};
+        if (!widgets.sparkline.markerProvider(
+                widgets.sparkline,
+                nowMs,
+                next
+            )) {
+            next = {};
+        }
+        if (sameMarker(widgets.marker, next)) continue;
+        if (widgets.marker.visible && next.visible) {
+            const auto oldArea = markerDamageArea(
+                widgets.sparklineSurface,
+                widgets.marker
             );
-            lv_obj_set_style_line_width(
-                widgets.sparklineCenterLine,
-                1,
-                LV_STATE_DEFAULT
+            const auto nextArea = markerDamageArea(
+                widgets.sparklineSurface,
+                next
             );
-            lv_obj_set_style_line_color(
-                widgets.sparklineCenterLine,
-                lv_color_hex(base_theme::color::INACTIVE_LIGHTER),
-                LV_STATE_DEFAULT
+            if (sameArea(oldArea, nextArea)) {
+                widgets.marker = next;
+                continue;
+            }
+        }
+        if (widgets.marker.visible) {
+            const auto oldArea = markerDamageArea(
+                widgets.sparklineSurface,
+                widgets.marker
             );
-            lv_obj_set_style_line_opa(
-                widgets.sparklineCenterLine,
-                LV_OPA_40,
-                LV_STATE_DEFAULT
+            lv_obj_invalidate_area(widgets.sparklineSurface, &oldArea);
+        }
+        widgets.marker = next;
+        if (widgets.marker.visible) {
+            const auto newArea = markerDamageArea(
+                widgets.sparklineSurface,
+                widgets.marker
             );
-            lv_obj_clear_flag(
-                widgets.sparklineCenterLine,
-                LV_OBJ_FLAG_HIDDEN
-            );
-        } else {
-            lv_obj_add_flag(
-                widgets.sparklineCenterLine,
-                LV_OBJ_FLAG_HIDDEN
-            );
+            lv_obj_invalidate_area(widgets.sparklineSurface, &newArea);
         }
     }
-    widgets.sparklineVisible = true;
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::refreshSparklineMarkerTimer() {
+    if (!marker_timer_) return;
+    bool active = false;
+    if (visible_) {
+        for (const auto& widgets : slot_widgets_) {
+            if (widgets.sparklineVisible &&
+                widgets.sparkline.markerProvider != nullptr) {
+                active = true;
+                break;
+            }
+        }
+    }
+    if (active) {
+        lv_timer_resume(marker_timer_);
+    } else {
+        lv_timer_pause(marker_timer_);
+    }
+}
+
+FLASHMEM void VirtualListKeyValueOverlay::onSparklineMarkerTimer(
+    lv_timer_t* timer
+) {
+    auto* self = static_cast<VirtualListKeyValueOverlay*>(
+        lv_timer_get_user_data(timer)
+    );
+    if (self) self->serviceSparklineMarkers();
 }
 
 FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
@@ -622,22 +807,10 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
                        ? base_theme::color::INACTIVE
                        : base_theme::color::INACTIVE_LIGHTER));
     }
-    if (widgets.sparklineLine) {
-        const bool visualPreview = widgets.sparklineVisible;
-        lv_obj_set_style_line_color(
-            widgets.sparklineLine,
-            lv_color_hex(
-                (isSelected || visualPreview)
-                    ? base_theme::color::ACTIVE
-                    : base_theme::color::INACTIVE
-            ),
-            LV_STATE_DEFAULT
-        );
-        lv_obj_set_style_line_opa(
-            widgets.sparklineLine,
-            (isSelected || visualPreview) ? LV_OPA_COVER : LV_OPA_70,
-            LV_STATE_DEFAULT
-        );
+    if (widgets.sparklineSurface && widgets.sparklineVisible) {
+        // Curve color remains semantic/active for every visible source. Focus
+        // is conveyed by the row background, not by rebuilding its geometry.
+        lv_obj_invalidate(widgets.sparklineSurface);
     }
 
     widgets.highlighted = isSelected;

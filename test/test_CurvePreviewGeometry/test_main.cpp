@@ -1,9 +1,12 @@
 #include <cassert>
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 
 #include <ms/ui/widget/CurvePreviewGeometry.hpp>
+#include <ms/ui/widget/KeyValueSparklineGeometry.hpp>
 
 namespace {
 
@@ -12,6 +15,31 @@ struct SampleContext {
     std::size_t rejectAt = static_cast<std::size_t>(-1);
     uint16_t previousPosition = 0U;
 };
+
+struct RollingContext {
+    std::array<uint16_t, 8> values{};
+    std::size_t calls = 0U;
+};
+
+bool sampleRolling(
+    void* rawContext,
+    uint16_t positionQ16,
+    ms::ui::CurvePreviewSample& out
+) {
+    auto& context = *static_cast<RollingContext*>(rawContext);
+    ++context.calls;
+    const std::size_t index = std::min<std::size_t>(
+        context.values.size() - 1U,
+        (static_cast<uint32_t>(positionQ16) *
+             (context.values.size() - 1U) +
+         32767U) /
+            65535U
+    );
+    out.curve = context.values[index];
+    out.base = context.values[index];
+    out.impact = context.values[index];
+    return true;
+}
 
 bool sampleRamp(
     void* rawContext,
@@ -102,6 +130,35 @@ void testRejectedSamplingClearsGeometry() {
     std::cout << "[PASS] invalid or rejected sampling cannot leave stale geometry\n";
 }
 
+void testRollingGeometryTouchesOnlyExposedColumns() {
+    ms::ui::CurvePreviewGeometry geometry{};
+    RollingContext context{};
+    for (std::size_t index = 0U; index < context.values.size(); ++index) {
+        context.values[index] = static_cast<uint16_t>(index * 100U);
+    }
+    assert(geometry.rebuild(8, 8, sampleRolling, &context));
+    assert(context.calls == 8U);
+
+    for (std::size_t index = 0U; index < context.values.size(); ++index) {
+        context.values[index] = static_cast<uint16_t>((index + 1U) * 100U);
+    }
+    context.calls = 0U;
+    assert(geometry.advance(1U, sampleRolling, &context));
+    assert(context.calls == 1U);
+    for (std::size_t index = 0U; index < context.values.size(); ++index) {
+        assert(geometry.curve[index] == context.values[index]);
+    }
+
+    context.values.back() = 4242U;
+    context.calls = 0U;
+    assert(geometry.patchLast(sampleRolling, &context));
+    assert(context.calls == 1U);
+    assert(geometry.curve[7] == 4242U);
+    assert(!geometry.advance(0U, sampleRolling, &context));
+    assert(!geometry.advance(8U, sampleRolling, &context));
+    std::cout << "[PASS] rolling geometry samples only changed columns\n";
+}
+
 void testMarkerRectanglesStayClipped() {
     using ms::ui::curvePreviewMarkerRect;
     const auto low = curvePreviewMarkerRect(8, 20, 304, 92, 0U, 0U, 3);
@@ -132,6 +189,72 @@ void testMarkerRectanglesStayClipped() {
     std::cout << "[PASS] marker invalidation rectangles are exact and clipped\n";
 }
 
+void testClipDerivedSampleRange() {
+    using ms::ui::curvePreviewSampleRangeForClip;
+    const auto full = curvePreviewSampleRangeForClip(
+        8, 304, 304U, 8, 311
+    );
+    assert(full.begin == 0U && full.end == 304U);
+
+    const auto marker = curvePreviewSampleRangeForClip(
+        8, 304, 304U, 108, 114
+    );
+    assert(marker.begin == 99U);
+    assert(marker.end == 108U);
+    assert(marker.size() == 9U);
+
+    const auto scaled = curvePreviewSampleRangeForClip(
+        0, 1000, 320U, 500, 505
+    );
+    assert(!scaled.empty());
+    assert(scaled.size() <= 6U);
+    assert(scaled.begin > 0U && scaled.end < 320U);
+
+    assert(curvePreviewSampleRangeForClip(
+        8, 304, 304U, -20, 7
+    ).empty());
+    assert(curvePreviewSampleRangeForClip(
+        8, 304, 304U, 312, 400
+    ).empty());
+    std::cout << "[PASS] draw sample range follows the LVGL clip with neighbours\n";
+}
+
+void testKeyValueSparklinePixelContract() {
+    using namespace ms::ui;
+    for (const std::size_t width : {58U, 110U}) {
+        assert(keyValueSparklinePositionQ16(0U, width) == 0U);
+        assert(keyValueSparklinePositionQ16(width - 1U, width) == 65535U);
+        for (std::size_t column = 0U; column < width; ++column) {
+            assert(keyValueSparklineCoordinate(
+                keyValueSparklinePositionQ16(column, width),
+                static_cast<int>(width)
+            ) == static_cast<int>(column));
+        }
+    }
+    const auto compactMarker = keyValueSparklineColumnsForClip(
+        20,
+        58,
+        43,
+        47
+    );
+    assert(compactMarker.begin == 22U);
+    assert(compactMarker.end == 29U);
+    assert(compactMarker.size() == 7U);
+    const auto wideMarker = keyValueSparklineColumnsForClip(
+        5,
+        110,
+        60,
+        62
+    );
+    assert(wideMarker.begin == 54U);
+    assert(wideMarker.end == 59U);
+    assert(wideMarker.size() == 5U);
+    assert(keyValueSparklineColumnsForClip(20, 58, 0, 19).empty());
+    assert(keyValueSparklineColumnsForClip(20, 58, 78, 100).empty());
+    static_assert(KEY_VALUE_SPARKLINE_DRAW_CHUNK <= 16U);
+    std::cout << "[PASS] key/value sparklines sample one point per visible column\n";
+}
+
 }  // namespace
 
 int main() {
@@ -140,7 +263,10 @@ int main() {
     testNormalizedMappingAndGuides();
     testGeometryAndDiscontinuity();
     testRejectedSamplingClearsGeometry();
+    testRollingGeometryTouchesOnlyExposedColumns();
     testMarkerRectanglesStayClipped();
+    testClipDerivedSampleRange();
+    testKeyValueSparklinePixelContract();
     std::cout << "All CurvePreviewGeometry tests passed (size="
               << sizeof(ms::ui::CurvePreviewGeometry) << " B)\n";
     return 0;
