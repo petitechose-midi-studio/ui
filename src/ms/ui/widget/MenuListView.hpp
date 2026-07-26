@@ -30,6 +30,11 @@ enum class MenuRowValueRole : uint8_t {
     Description,
 };
 
+enum class MenuListHeaderLayout : uint8_t {
+    Horizontal = 0,
+    Stacked,
+};
+
 struct MenuRow {
     const char* label = "";
     const char* value = "";
@@ -46,6 +51,7 @@ struct MenuListViewProps {
     int rowCount = 0;
     int selectedIndex = 0;
     uint32_t dataRevision = 0;
+    MenuListHeaderLayout headerLayout = MenuListHeaderLayout::Horizontal;
 };
 
 class MenuListView {
@@ -111,6 +117,7 @@ private:
                              bool isSelected,
                              const RowCache& row);
     void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role);
+    void applyHeaderLayout(MenuListHeaderLayout layout);
     void applyRowStyle(SlotWidgets& widgets, const RowCache& row);
     void syncRows(const MenuListViewProps& props,
                   std::array<int, MAX_ROWS>& dirtyIndices,
@@ -134,6 +141,8 @@ private:
     uint32_t last_data_revision_ = 0;
     int last_row_count_ = 0;
     int row_count_ = 0;
+    MenuListHeaderLayout header_layout_ = MenuListHeaderLayout::Horizontal;
+    bool header_layout_applied_ = false;
 };
 
 }  // namespace ms::ui
