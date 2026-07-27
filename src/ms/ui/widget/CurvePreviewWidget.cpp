@@ -384,13 +384,59 @@ void CurvePreviewWidget::invalidateTail() const {
     );
 }
 
+FLASHMEM void CurvePreviewWidget::invalidateDamage(
+    const CurvePreviewDamage& damage
+) const {
+    if (surface_ == nullptr || !renderedArea_ || !renderedProps_ ||
+        damage.sampleCount < 2U) {
+        return;
+    }
+    const auto& area = *renderedArea_;
+    const auto& props = *renderedProps_;
+    const int32_t margin = std::max<int32_t>(
+        2,
+        std::max({
+            static_cast<int32_t>(props.curveWidth),
+            static_cast<int32_t>(props.baseWidth),
+            static_cast<int32_t>(props.impactWidth),
+        }) + 1
+    );
+    for (uint8_t plane = 0U; plane < 2U; ++plane) {
+        const auto& tiles = plane == 0U
+            ? damage.curveTiles
+            : damage.impactTiles;
+        for (const auto& tile : tiles) {
+            const auto rect = curvePreviewDamageRect(
+                tile,
+                damage.sampleCount,
+                area.x1,
+                area.y1,
+                lv_area_get_width(&area),
+                lv_area_get_height(&area),
+                margin
+            );
+            if (!rect.valid()) continue;
+            oc::ui::lvgl::invalidateStaticSurfaceArea(
+                surface_,
+                {
+                    .x1 = static_cast<lv_coord_t>(rect.x1),
+                    .y1 = static_cast<lv_coord_t>(rect.y1),
+                    .x2 = static_cast<lv_coord_t>(rect.x2),
+                    .y2 = static_cast<lv_coord_t>(rect.y2),
+                }
+            );
+        }
+    }
+}
+
 bool CurvePreviewWidget::updateRollingGeometry(
     uint32_t geometryRevision,
     CurvePreviewGeometryUpdate update,
     uint16_t advanceCount
 ) {
     if (!visible_ || !rendered_ || surface_ == nullptr || !renderedProps_ ||
-        update == CurvePreviewGeometryUpdate::REBUILD) {
+        update == CurvePreviewGeometryUpdate::REBUILD ||
+        update == CurvePreviewGeometryUpdate::REBUILD_DAMAGE) {
         return false;
     }
     if (renderedProps_->geometryRevision == geometryRevision) return true;
@@ -630,12 +676,15 @@ FLASHMEM void CurvePreviewWidget::render(
         : CurvePreviewMarker{};
     renderedArea_ = area;
     bool tailPatched = false;
+    bool damageRebuilt = false;
+    CurvePreviewDamage damage{};
     if (geometryChanged) {
         OC_PERF_SCOPE(perfGeometry, "ui.curve-preview.geometry");
         const bool sameSampler = rendered_ && !areaChanged &&
             renderedProps_->sampleProvider == props.sampleProvider &&
             renderedProps_->sampleContext == props.sampleContext;
         bool updated = false;
+        bool damageAttempted = false;
         if (sameSampler && props.geometryUpdate ==
                 CurvePreviewGeometryUpdate::PATCH_LAST) {
             updated = geometry_.patchLast(
@@ -650,8 +699,27 @@ FLASHMEM void CurvePreviewWidget::render(
                 props.sampleProvider,
                 props.sampleContext
             );
+        } else if (
+            sameSampler && !styleChanged &&
+            props.geometryUpdate ==
+                CurvePreviewGeometryUpdate::REBUILD_DAMAGE &&
+            geometry_.sampleCount ==
+                curvePreviewSampleCountForWidth(
+                    lv_area_get_width(&area)
+                )
+        ) {
+            damageAttempted = true;
+            updated = geometry_.rebuildWithDamage(
+                lv_area_get_width(&area),
+                lv_area_get_height(&area),
+                props.sampleProvider,
+                props.sampleContext,
+                props.showImpactBand,
+                damage
+            );
+            damageRebuilt = updated;
         }
-        if (!updated) {
+        if (!updated && !damageAttempted) {
             (void)geometry_.rebuild(
                 lv_area_get_width(&area),
                 lv_area_get_height(&area),
@@ -662,17 +730,22 @@ FLASHMEM void CurvePreviewWidget::render(
         }
         OC_PERF_UNITS(
             perfGeometry,
-            tailPatched
+            damageRebuilt
+                ? damage.changedSampleCount
+                : (tailPatched
                 ? 1U
                 : (props.geometryUpdate ==
                            CurvePreviewGeometryUpdate::ADVANCE && updated
                        ? props.geometryAdvance
-                       : geometry_.sampleCount),
-            static_cast<uint32_t>(lv_area_get_width(&area))
+                       : geometry_.sampleCount)),
+            damageRebuilt
+                ? static_cast<uint32_t>(damage.dirtyTileCount())
+                : static_cast<uint32_t>(lv_area_get_width(&area))
         );
     }
     const bool fullInvalidation =
-        (geometryChanged && !tailPatched) || styleChanged;
+        (geometryChanged && !tailPatched && !damageRebuilt) ||
+        styleChanged;
     if (!fullInvalidation && markerChanged) {
         invalidateMarker(previousMarker);
     }
@@ -682,6 +755,7 @@ FLASHMEM void CurvePreviewWidget::render(
     if (fullInvalidation) {
         lv_obj_invalidate(surface_);
     } else {
+        if (damageRebuilt) invalidateDamage(damage);
         if (tailPatched) invalidateTail();
         if (markerChanged) invalidateMarker(resolvedMarker);
     }

@@ -94,6 +94,7 @@ private:
 
     void createUi(lv_obj_t* parent);
     void draw(lv_layer_t* layer);
+    void invalidateDamage(const CurvePreviewDamage& damage) const;
     void invalidateTail() const;
     void invalidateMarker(const CurvePreviewMarker& marker) const;
     void serviceMarker();

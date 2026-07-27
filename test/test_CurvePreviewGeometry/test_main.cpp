@@ -21,6 +21,14 @@ struct RollingContext {
     std::size_t calls = 0U;
 };
 
+struct DamageContext {
+    std::array<uint16_t, 64> curve{};
+    std::array<uint16_t, 64> base{};
+    std::array<uint16_t, 64> impact{};
+    std::size_t calls = 0U;
+    std::size_t rejectAt = static_cast<std::size_t>(-1);
+};
+
 bool sampleRolling(
     void* rawContext,
     uint16_t positionQ16,
@@ -55,6 +63,26 @@ bool sampleRamp(
     out.discontinuityBefore = call > 0U &&
         context.previousPosition < 32768U && positionQ16 >= 32768U;
     context.previousPosition = positionQ16;
+    return true;
+}
+
+bool sampleDamage(
+    void* rawContext,
+    uint16_t positionQ16,
+    ms::ui::CurvePreviewSample& out
+) {
+    auto& context = *static_cast<DamageContext*>(rawContext);
+    if (context.calls++ == context.rejectAt) return false;
+    const std::size_t index = std::min<std::size_t>(
+        context.curve.size() - 1U,
+        (static_cast<uint32_t>(positionQ16) *
+             (context.curve.size() - 1U) +
+         32767U) /
+            65535U
+    );
+    out.curve = context.curve[index];
+    out.base = context.base[index];
+    out.impact = context.impact[index];
     return true;
 }
 
@@ -159,6 +187,142 @@ void testRollingGeometryTouchesOnlyExposedColumns() {
     std::cout << "[PASS] rolling geometry samples only changed columns\n";
 }
 
+void testAuthoredRebuildReportsBoundedDamage() {
+    using namespace ms::ui;
+    CurvePreviewGeometry geometry{};
+    CurvePreviewDamage damage{};
+    DamageContext context{};
+    context.base.fill(20000U);
+    context.impact.fill(40000U);
+    assert(geometry.rebuild(64, 64, sampleDamage, &context));
+
+    context.calls = 0U;
+    context.curve[20] = 50000U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    assert(context.calls == 64U);
+    assert(damage.sampleCount == 64U);
+    assert(damage.changedSampleCount == 1U);
+    assert(damage.dirtyTileCount() == 1U);
+    assert(damage.curveTiles[0].firstSample == 19U);
+    assert(damage.curveTiles[0].lastSample == 21U);
+    assert(damage.curveTiles[0].minimumValue == 0U);
+    assert(damage.curveTiles[0].maximumValue == 50000U);
+    assert(!damage.impactTiles[0].dirty());
+    const auto rect = curvePreviewDamageRect(
+        damage.curveTiles[0], damage.sampleCount, 8, 20, 64, 64, 3
+    );
+    assert(rect.valid());
+    assert(rect.x1 == 24);
+    assert(rect.x2 == 32);
+    assert(rect.y1 < rect.y2);
+
+    context.curve[0] = 65535U;
+    context.curve[63] = 65535U;
+    context.calls = 0U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    const std::size_t lastActiveTile =
+        (damage.sampleCount - 1U) /
+        CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT;
+    assert(damage.curveTiles.front().dirty());
+    assert(damage.curveTiles[lastActiveTile].dirty());
+    const auto leftEdge = curvePreviewDamageRect(
+        damage.curveTiles.front(), damage.sampleCount, 8, 20, 64, 64, 3
+    );
+    const auto rightEdge = curvePreviewDamageRect(
+        damage.curveTiles[lastActiveTile],
+        damage.sampleCount,
+        8,
+        20,
+        64,
+        64,
+        3
+    );
+    assert(leftEdge.x1 == 8);
+    assert(leftEdge.y1 == 20);
+    assert(rightEdge.x2 == 71);
+    assert(rightEdge.y1 == 20);
+
+    context.calls = 0U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    assert(damage.changedSampleCount == 0U);
+    assert(damage.dirtyTileCount() == 0U);
+
+    // A point on a tile boundary affects both adjacent segments but never
+    // grows the bounded damage map beyond its two neighbouring tiles.
+    context.curve[31] = 42000U;
+    context.calls = 0U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    assert(damage.changedSampleCount == 1U);
+    assert(damage.dirtyTileCount() == 2U);
+    assert(damage.curveTiles[0].dirty());
+    assert(damage.curveTiles[1].dirty());
+
+    // Hidden impact rails are refreshed in retained geometry without
+    // generating needless damage.
+    context.base[10] = 1234U;
+    context.calls = 0U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, false, damage
+    ));
+    assert(geometry.base[10] == 1234U);
+    assert(damage.dirtyTileCount() == 0U);
+
+    std::cout << "[PASS] authored rebuild emits bounded segment damage\n";
+}
+
+void testAmplitudeDamageDoesNotSpanUnchangedBase() {
+    using namespace ms::ui;
+    CurvePreviewGeometry geometry{};
+    CurvePreviewDamage damage{};
+    DamageContext context{};
+    context.curve.fill(30000U);
+    context.base.fill(4000U);
+    context.impact.fill(50000U);
+    assert(geometry.rebuild(64, 64, sampleDamage, &context));
+
+    context.curve.fill(31000U);
+    context.impact.fill(51000U);
+    context.calls = 0U;
+    assert(geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    assert(damage.changedSampleCount == 64U);
+    assert(damage.dirtyTileCount() == 4U);
+    for (std::size_t tile = 0U; tile < 2U; ++tile) {
+        assert(damage.curveTiles[tile].minimumValue == 30000U);
+        assert(damage.curveTiles[tile].maximumValue == 31000U);
+        assert(damage.impactTiles[tile].minimumValue == 50000U);
+        assert(damage.impactTiles[tile].maximumValue == 51000U);
+    }
+    std::cout
+        << "[PASS] amplitude damage excludes the unchanged Base rail\n";
+}
+
+void testRejectedDamageRebuildClearsGeometry() {
+    using namespace ms::ui;
+    CurvePreviewGeometry geometry{};
+    CurvePreviewDamage damage{};
+    DamageContext context{};
+    assert(geometry.rebuild(64, 64, sampleDamage, &context));
+    context.calls = 0U;
+    context.rejectAt = 7U;
+    assert(!geometry.rebuildWithDamage(
+        64, 64, sampleDamage, &context, true, damage
+    ));
+    assert(geometry.sampleCount == 0U);
+    assert(damage.sampleCount == 0U);
+    assert(damage.dirtyTileCount() == 0U);
+    std::cout << "[PASS] rejected differential sampling fails closed\n";
+}
+
 void testMarkerRectanglesStayClipped() {
     using ms::ui::curvePreviewMarkerRect;
     const auto low = curvePreviewMarkerRect(8, 20, 304, 92, 0U, 0U, 3);
@@ -259,11 +423,15 @@ void testKeyValueSparklinePixelContract() {
 
 int main() {
     static_assert(sizeof(ms::ui::CurvePreviewGeometry) <= 2048U);
+    static_assert(sizeof(ms::ui::CurvePreviewDamage) <= 256U);
     testWidthDerivedDensity();
     testNormalizedMappingAndGuides();
     testGeometryAndDiscontinuity();
     testRejectedSamplingClearsGeometry();
     testRollingGeometryTouchesOnlyExposedColumns();
+    testAuthoredRebuildReportsBoundedDamage();
+    testAmplitudeDamageDoesNotSpanUnchangedBase();
+    testRejectedDamageRebuildClearsGeometry();
     testMarkerRectanglesStayClipped();
     testClipDerivedSampleRange();
     testKeyValueSparklinePixelContract();
