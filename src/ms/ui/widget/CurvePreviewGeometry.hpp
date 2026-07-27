@@ -24,12 +24,15 @@ struct CurvePreviewSample {
 /**
  * Minimum retained-geometry mutation announced by a sample owner.
  *
- * REBUILD is the safe default for authored curves. PATCH_LAST and ADVANCE are
- * reserved for pixel-bucketed rolling traces whose logical samples move in
- * lockstep with the retained screen columns.
+ * REBUILD is the safe default for authored curves. REBUILD_DAMAGE samples the
+ * complete authored curve but retains a compact damage map so the renderer can
+ * invalidate only changed segments. PATCH_LAST and ADVANCE are reserved for
+ * pixel-bucketed rolling traces whose logical samples move in lockstep with
+ * the retained screen columns.
  */
 enum class CurvePreviewGeometryUpdate : uint8_t {
     REBUILD = 0,
+    REBUILD_DAMAGE,
     PATCH_LAST,
     ADVANCE,
 };
@@ -58,6 +61,100 @@ struct CurvePreviewSampleRange {
     [[nodiscard]] constexpr bool empty() const { return begin >= end; }
     [[nodiscard]] constexpr std::size_t size() const {
         return empty() ? 0U : end - begin;
+    }
+};
+
+// Damage is grouped into a bounded number of horizontal tiles. This keeps
+// LVGL's invalidation queue bounded while still avoiding a full-height redraw
+// when an authored curve changes across the whole display width.
+inline constexpr std::size_t CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT = 32U;
+inline constexpr std::size_t CURVE_PREVIEW_DAMAGE_TILE_COUNT =
+    (CURVE_PREVIEW_MAX_SAMPLE_COUNT +
+     CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT - 1U) /
+    CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT;
+
+struct CurvePreviewDamageTile {
+    uint16_t firstSample = CURVE_PREVIEW_NORMALIZED_MAX;
+    uint16_t lastSample = 0U;
+    uint16_t minimumValue = CURVE_PREVIEW_NORMALIZED_MAX;
+    uint16_t maximumValue = 0U;
+
+    [[nodiscard]] constexpr bool dirty() const {
+        return firstSample != CURVE_PREVIEW_NORMALIZED_MAX;
+    }
+
+    void include(std::size_t sampleIndex, uint16_t value) {
+        const auto index = static_cast<uint16_t>(sampleIndex);
+        if (!dirty()) {
+            firstSample = index;
+            lastSample = index;
+            minimumValue = value;
+            maximumValue = value;
+            return;
+        }
+        firstSample = std::min(firstSample, index);
+        lastSample = std::max(lastSample, index);
+        minimumValue = std::min(minimumValue, value);
+        maximumValue = std::max(maximumValue, value);
+    }
+};
+
+struct CurvePreviewDamage {
+    std::array<
+        CurvePreviewDamageTile,
+        CURVE_PREVIEW_DAMAGE_TILE_COUNT
+    > curveTiles{};
+    /**
+     * Base/impact rails and their filled delta band share one plane. Keeping
+     * it separate from the foreground curve avoids turning two narrow,
+     * vertically distant edits into one almost full-height rectangle.
+     */
+    std::array<
+        CurvePreviewDamageTile,
+        CURVE_PREVIEW_DAMAGE_TILE_COUNT
+    > impactTiles{};
+    uint16_t sampleCount = 0U;
+    uint16_t changedSampleCount = 0U;
+
+    void clear() {
+        curveTiles = {};
+        impactTiles = {};
+        sampleCount = 0U;
+        changedSampleCount = 0U;
+    }
+
+    void reset(std::size_t count) {
+        clear();
+        sampleCount = static_cast<uint16_t>(count);
+    }
+
+    void includeCurve(std::size_t sampleIndex, uint16_t value) {
+        if (sampleIndex >= sampleCount) return;
+        const auto tileIndex =
+            sampleIndex / CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT;
+        if (tileIndex >= curveTiles.size()) return;
+        curveTiles[tileIndex].include(sampleIndex, value);
+    }
+
+    void includeImpact(std::size_t sampleIndex, uint16_t value) {
+        if (sampleIndex >= sampleCount) return;
+        const auto tileIndex =
+            sampleIndex / CURVE_PREVIEW_DAMAGE_TILE_SAMPLE_COUNT;
+        if (tileIndex >= impactTiles.size()) return;
+        impactTiles[tileIndex].include(sampleIndex, value);
+    }
+
+    [[nodiscard]] std::size_t dirtyTileCount() const {
+        const auto countDirty = [](const auto& tiles) {
+            return static_cast<std::size_t>(std::count_if(
+                tiles.begin(),
+                tiles.end(),
+                [](const CurvePreviewDamageTile& tile) {
+                    return tile.dirty();
+                }
+            ));
+        };
+        return countDirty(curveTiles) + countDirty(impactTiles);
     }
 };
 
@@ -182,6 +279,52 @@ struct CurvePreviewSampleRange {
     };
 }
 
+[[nodiscard]] constexpr CurvePreviewRect curvePreviewDamageRect(
+    const CurvePreviewDamageTile& tile,
+    std::size_t sampleCount,
+    int32_t originX,
+    int32_t originY,
+    int32_t width,
+    int32_t height,
+    int32_t margin
+) {
+    if (!tile.dirty() || sampleCount < 2U || width < 2 || height < 2 ||
+        margin < 0) {
+        return {
+            .x1 = originX,
+            .y1 = originY,
+            .x2 = originX - 1,
+            .y2 = originY - 1,
+        };
+    }
+    const int32_t firstX = curvePreviewCoordinate(
+        curvePreviewPositionQ16(tile.firstSample, sampleCount),
+        originX,
+        width
+    );
+    const int32_t lastX = curvePreviewCoordinate(
+        curvePreviewPositionQ16(tile.lastSample, sampleCount),
+        originX,
+        width
+    );
+    const int32_t top = curvePreviewY(
+        tile.maximumValue,
+        originY,
+        height
+    );
+    const int32_t bottom = curvePreviewY(
+        tile.minimumValue,
+        originY,
+        height
+    );
+    return {
+        .x1 = std::max(originX, firstX - margin),
+        .y1 = std::max(originY, top - margin),
+        .x2 = std::min(originX + width - 1, lastX + margin),
+        .y2 = std::min(originY + height - 1, bottom + margin),
+    };
+}
+
 struct CurvePreviewGeometry {
     std::array<uint16_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT> curve{};
     std::array<uint16_t, CURVE_PREVIEW_MAX_SAMPLE_COUNT> base{};
@@ -221,6 +364,118 @@ struct CurvePreviewGeometry {
             }
         }
         sampleCount = static_cast<uint16_t>(count);
+        return true;
+    }
+
+    /**
+     * Re-sample retained geometry in place and report the old/new raster
+     * envelope of every changed segment. The caller must only use this when
+     * width and provider identity are stable; false clears geometry exactly
+     * like rebuild() after a rejected sample.
+     */
+    [[nodiscard]] bool rebuildWithDamage(
+        int32_t width,
+        int32_t height,
+        CurvePreviewSampleProvider provider,
+        void* context,
+        bool includeBaseAndImpact,
+        CurvePreviewDamage& damage
+    ) {
+        const std::size_t count = curvePreviewSampleCountForWidth(width);
+        if (count < 2U || count != sampleCount || height < 2 ||
+            provider == nullptr) {
+            damage.clear();
+            return false;
+        }
+
+        damage.reset(count);
+        CurvePreviewSample previousOld{};
+        CurvePreviewSample previousNew{};
+        bool previousCurveChanged = false;
+        bool previousBaseChanged = false;
+        bool previousImpactChanged = false;
+
+        for (std::size_t index = 0U; index < count; ++index) {
+            CurvePreviewSample oldSample{
+                .curve = curve[index],
+                .base = base[index],
+                .impact = impact[index],
+                .discontinuityBefore =
+                    index > 0U && discontinuities[index],
+            };
+            CurvePreviewSample newSample{};
+            const uint16_t position =
+                curvePreviewPositionQ16(index, count);
+            if (!provider(context, position, newSample)) {
+                clear();
+                damage.clear();
+                return false;
+            }
+            if (index == 0U) newSample.discontinuityBefore = false;
+
+            const bool discontinuityChanged =
+                oldSample.discontinuityBefore !=
+                newSample.discontinuityBefore;
+            const bool curveChanged =
+                oldSample.curve != newSample.curve ||
+                discontinuityChanged;
+            const bool baseChanged = includeBaseAndImpact &&
+                oldSample.base != newSample.base;
+            const bool impactChanged = includeBaseAndImpact &&
+                oldSample.impact != newSample.impact;
+            const bool changed =
+                curveChanged || baseChanged || impactChanged;
+            if (changed) ++damage.changedSampleCount;
+
+            curve[index] = newSample.curve;
+            base[index] = newSample.base;
+            impact[index] = newSample.impact;
+            discontinuities[index] =
+                index > 0U && newSample.discontinuityBefore;
+
+            if (index == 0U) {
+                if (curveChanged) {
+                    damage.includeCurve(index, oldSample.curve);
+                    damage.includeCurve(index, newSample.curve);
+                }
+                if (baseChanged) {
+                    damage.includeImpact(index, oldSample.base);
+                    damage.includeImpact(index, newSample.base);
+                }
+                if (impactChanged) {
+                    damage.includeImpact(index, oldSample.impact);
+                    damage.includeImpact(index, newSample.impact);
+                }
+            } else {
+                // A changed endpoint affects both adjacent line segments.
+                // Track each visual plane independently: an unchanged Base
+                // must not expand an amplitude edit down to the Base rail.
+                if (previousCurveChanged || curveChanged) {
+                    damage.includeCurve(index - 1U, previousOld.curve);
+                    damage.includeCurve(index - 1U, previousNew.curve);
+                    damage.includeCurve(index, oldSample.curve);
+                    damage.includeCurve(index, newSample.curve);
+                }
+                if (previousBaseChanged || baseChanged) {
+                    damage.includeImpact(index - 1U, previousOld.base);
+                    damage.includeImpact(index - 1U, previousNew.base);
+                    damage.includeImpact(index, oldSample.base);
+                    damage.includeImpact(index, newSample.base);
+                }
+                if (previousImpactChanged || impactChanged) {
+                    damage.includeImpact(index - 1U, previousOld.impact);
+                    damage.includeImpact(index - 1U, previousNew.impact);
+                    damage.includeImpact(index, oldSample.impact);
+                    damage.includeImpact(index, newSample.impact);
+                }
+            }
+
+            previousOld = oldSample;
+            previousNew = newSample;
+            previousCurveChanged = curveChanged;
+            previousBaseChanged = baseChanged;
+            previousImpactChanged = impactChanged;
+        }
         return true;
     }
 
