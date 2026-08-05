@@ -30,9 +30,18 @@
       "-D LV_LVGL_H_INCLUDE_SIMPLE"
     ],
     "srcFilter": [
-      "+<**/*.c>",
-      "+<**/*.cpp>",
-      "-<main.cpp>"
+      "+<ms/ui/ViewContainer.cpp>",
+      "+<ms/ui/component/LayoutOverlay.cpp>",
+      "+<ms/ui/component/LayoutView.cpp>",
+      "+<ms/ui/component/VirtualListOverlay.cpp>",
+      "+<ms/ui/font/CoreFonts.cpp>",
+      "+<ms/ui/widget/BaseSelector.cpp>",
+      "+<ms/ui/widget/CurvePreviewWidget.cpp>",
+      "+<ms/ui/widget/ListOverlay.cpp>",
+      "+<ms/ui/widget/MenuListView.cpp>",
+      "+<ms/ui/widget/StringListSelector.cpp>",
+      "+<ms/ui/widget/VirtualListKeyValueOverlay.cpp>",
+      "+<ms/ui/widget/VirtualListSelectorOverlay.cpp>"
     ]
   }
 }
