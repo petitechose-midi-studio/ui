@@ -39,6 +39,7 @@
       "+<ms/ui/widget/CurvePreviewWidget.cpp>",
       "+<ms/ui/widget/ListOverlay.cpp>",
       "+<ms/ui/widget/MenuListView.cpp>",
+      "+<ms/ui/widget/TextOverflow.cpp>",
       "+<ms/ui/widget/StringListSelector.cpp>",
       "+<ms/ui/widget/VirtualListKeyValueOverlay.cpp>",
       "+<ms/ui/widget/VirtualListSelectorOverlay.cpp>"
