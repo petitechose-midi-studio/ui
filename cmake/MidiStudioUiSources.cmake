@@ -10,6 +10,7 @@ set(MS_UI_SOURCE_PATHS
     src/ms/ui/widget/ListOverlay.cpp
     src/ms/ui/widget/MenuListView.cpp
     src/ms/ui/widget/StringListSelector.cpp
+    src/ms/ui/widget/TextOverflow.cpp
     src/ms/ui/widget/VirtualListKeyValueOverlay.cpp
     src/ms/ui/widget/VirtualListSelectorOverlay.cpp
 )

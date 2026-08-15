@@ -37,6 +37,15 @@ struct CoreFonts {
     lv_font_t* parameter_value_label = nullptr;
     lv_font_t* tempo_label = nullptr;
     lv_font_t* list_item_label = nullptr;
+
+    // Controller UI roles. Accessors avoid both extra font binaries and
+    // persistent alias pointers in constrained RAM.
+    lv_font_t* context_title() const { return inter_14_semibold; }
+    lv_font_t* header_label() const { return inter_14_medium; }
+    lv_font_t* primary_value() const { return inter_14_semibold; }
+    lv_font_t* compact_label() const { return inter_13_medium; }
+    lv_font_t* compact_selected() const { return inter_13_bold; }
+    lv_font_t* meta_label() const { return inter_12_medium; }
 };
 
 /// Global core fonts instance

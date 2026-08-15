@@ -15,6 +15,8 @@
 #include <oc/ui/lvgl/widget/Label.hpp>
 #include <oc/ui/lvgl/widget/VirtualList.hpp>
 
+#include <ms/ui/widget/ListVisualTokens.hpp>
+
 namespace ms::ui {
 
 enum class MenuRowKind : uint8_t {
@@ -23,6 +25,20 @@ enum class MenuRowKind : uint8_t {
     Action,
     Toggle,
     Disabled,
+};
+
+/**
+ * Semantic tone of the displayed value.
+ *
+ * Row kind controls behavior and availability. Tone is deliberately separate
+ * so a normal action does not look focused and an inherited toggle does not
+ * look like a successful outcome.
+ */
+enum class MenuRowTone : uint8_t {
+    Neutral = 0,
+    Positive,
+    Warning,
+    Destructive,
 };
 
 enum class MenuRowValueRole : uint8_t {
@@ -39,6 +55,7 @@ struct MenuRow {
     const char* label = "";
     const char* value = "";
     MenuRowKind kind = MenuRowKind::Value;
+    MenuRowTone tone = MenuRowTone::Neutral;
     bool enabled = true;
     bool valueAutoScroll = false;
     MenuRowValueRole valueRole = MenuRowValueRole::Value;
@@ -52,6 +69,7 @@ struct MenuListViewProps {
     int selectedIndex = 0;
     uint32_t dataRevision = 0;
     MenuListHeaderLayout headerLayout = MenuListHeaderLayout::Horizontal;
+    const ListVisualTokens* visualTokens = nullptr;
 };
 
 class MenuListView {
@@ -81,6 +99,7 @@ private:
         TextCache label;
         TextCache value;
         MenuRowKind kind = MenuRowKind::Value;
+        MenuRowTone tone = MenuRowTone::Neutral;
         bool enabled = true;
         bool valueAutoScroll = false;
         MenuRowValueRole valueRole = MenuRowValueRole::Value;
@@ -117,6 +136,8 @@ private:
                              bool isSelected,
                              const RowCache& row);
     void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role);
+    void syncValuePresentation(SlotWidgets& widgets, const RowCache& row,
+                               bool isSelected);
     void applyHeaderLayout(MenuListHeaderLayout layout);
     void applyRowStyle(SlotWidgets& widgets, const RowCache& row);
     void syncRows(const MenuListViewProps& props,
@@ -139,6 +160,7 @@ private:
     TextCache meta_cache_{};
 
     uint32_t last_data_revision_ = 0;
+    const ListVisualTokens* visual_tokens_ = nullptr;
     int last_row_count_ = 0;
     int row_count_ = 0;
     MenuListHeaderLayout header_layout_ = MenuListHeaderLayout::Horizontal;

@@ -14,6 +14,7 @@
 #include <oc/ui/lvgl/widget/VirtualList.hpp>
 
 #include <ms/ui/component/VirtualListOverlay.hpp>
+#include <ms/ui/widget/ListVisualTokens.hpp>
 
 namespace ms::ui {
 
@@ -36,6 +37,7 @@ struct VirtualListSelectorOverlayProps {
     // Optional: bump when list labels/shape changes (lets render() skip invalidations).
     // 0 means "unknown" (render() will fall back to pointer/count checks).
     uint32_t dataRevision = 0;
+    const ListVisualTokens* visualTokens = nullptr;
 };
 
 class VirtualListSelectorOverlay {
@@ -90,6 +92,7 @@ private:
     bool last_dim_unselected_ = true;
     lv_opa_t last_backdrop_opacity_ = LayoutOverlay::DEFAULT_BACKDROP_OPACITY;
     uint32_t last_data_revision_ = 0;
+    const ListVisualTokens* last_visual_tokens_ = nullptr;
 };
 
 }  // namespace ms::ui

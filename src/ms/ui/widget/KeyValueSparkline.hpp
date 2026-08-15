@@ -33,6 +33,13 @@ using KeyValueSparklineMarkerProvider = bool (*)(
     KeyValueSparklineMarker& out
 );
 
+enum class KeyValueSparklineColorRole : uint8_t {
+    ACTION = 0,
+    DATA,
+    LIVE,
+    SECONDARY,
+};
+
 /**
  * Small retained descriptor. Musical rows never carry a width-sized table:
  * the five visible slots sample authored authority at their physical width.
@@ -42,8 +49,12 @@ struct KeyValueSparkline {
     uint32_t identity = 0U;
     uint32_t geometryRevision = 0U;
     uint16_t runtimeIndex = UINT16_MAX;
-    bool enabled = false;
-    bool centerLine = false;
+    // Interaction flags and both semantic color roles share the two bytes
+    // previously occupied by booleans, preserving the controller footprint.
+    uint8_t enabled : 1;
+    uint8_t centerLine : 1;
+    uint8_t curveColorRole : 3;
+    uint8_t markerColorRole : 3;
     KeyValueSparklineSampleProvider sampleProvider = nullptr;
     KeyValueSparklineMarkerProvider markerProvider = nullptr;
 };

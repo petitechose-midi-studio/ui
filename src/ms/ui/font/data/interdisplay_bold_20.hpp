@@ -1,4 +1,4 @@
-// Auto-generated | InterDisplay-Bold.ttf | 20px | 4bpp | 2026-03-28 13:15
+// Auto-generated | InterDisplay-Bold.ttf | 20px | 4bpp | 2026-08-14 14:21
 #pragma once
 #include "config/PlatformCompat.hpp"
 extern const uint8_t interdisplay_bold_20_bin[] PROGMEM;

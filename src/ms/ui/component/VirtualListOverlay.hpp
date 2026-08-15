@@ -5,8 +5,10 @@
  * @brief Bitwig-like modal overlay shell with header + VirtualList
  */
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <string>
 
 #include <lvgl.h>
 
@@ -31,6 +33,7 @@ public:
 
     void setTitle(const char* text);
     void setMeta(const char* text);
+    void setTextColors(uint32_t primary, uint32_t secondary);
     void setBackdropOpacity(lv_opa_t opacity) {
         overlay_.setBackdropOpacity(opacity);
     }
@@ -45,16 +48,27 @@ public:
     lv_obj_t* getElement() const override { return overlay_.getElement(); }
 
 private:
+    static constexpr std::size_t TEXT_CACHE_SIZE = 48;
+    using TextCache = std::array<char, TEXT_CACHE_SIZE>;
+
     void createHeader();
     void createList();
+    static void setTextIfChanged(
+        lv_obj_t* label,
+        TextCache& cache,
+        const char* text
+    );
 
     LayoutOverlay overlay_;
 
     lv_obj_t* header_row_ = nullptr;
     lv_obj_t* title_label_ = nullptr;
     lv_obj_t* meta_label_ = nullptr;
-    std::string title_cache_;
-    std::string meta_cache_;
+    TextCache title_cache_{};
+    TextCache meta_cache_{};
+    uint32_t primary_text_color_ = 0;
+    uint32_t secondary_text_color_ = 0;
+    bool text_colors_applied_ = false;
 
     std::unique_ptr<oc::ui::lvgl::widget::VirtualList> list_;
 };
