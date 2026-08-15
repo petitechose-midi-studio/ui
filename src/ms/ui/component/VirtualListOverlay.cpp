@@ -1,5 +1,7 @@
 #include "VirtualListOverlay.hpp"
 
+#include <cstring>
+
 #include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
@@ -77,23 +79,51 @@ FLASHMEM void VirtualListOverlay::configureList(int visibleCount, int itemHeight
 }
 
 FLASHMEM void VirtualListOverlay::setTitle(const char* text) {
-    if (!title_label_) return;
-
-    const char* next = text ? text : "";
-    if (title_cache_ == next) return;
-
-    title_cache_ = next;
-    lv_label_set_text(title_label_, title_cache_.c_str());
+    setTextIfChanged(title_label_, title_cache_, text);
 }
 
 FLASHMEM void VirtualListOverlay::setMeta(const char* text) {
-    if (!meta_label_) return;
+    setTextIfChanged(meta_label_, meta_cache_, text);
+}
 
-    const char* next = text ? text : "";
-    if (meta_cache_ == next) return;
+FLASHMEM void VirtualListOverlay::setTextIfChanged(
+    lv_obj_t* label,
+    TextCache& cache,
+    const char* text
+) {
+    if (!label) return;
 
-    meta_cache_ = next;
-    lv_label_set_text(meta_label_, meta_cache_.c_str());
+    const char* source = text ? text : "";
+    std::array<char, TEXT_CACHE_SIZE> next{};
+    std::strncpy(next.data(), source, next.size() - 1U);
+    next.back() = '\0';
+    if (std::strncmp(cache.data(), next.data(), cache.size()) == 0) {
+        return;
+    }
+
+    cache = next;
+    lv_label_set_text(label, cache.data());
+}
+
+FLASHMEM void VirtualListOverlay::setTextColors(
+    uint32_t primary,
+    uint32_t secondary
+) {
+    if (!title_label_ || !meta_label_) return;
+    if (text_colors_applied_ && primary_text_color_ == primary &&
+        secondary_text_color_ == secondary) {
+        return;
+    }
+
+    lv_obj_set_style_text_color(
+        title_label_, lv_color_hex(primary), LV_STATE_DEFAULT
+    );
+    lv_obj_set_style_text_color(
+        meta_label_, lv_color_hex(secondary), LV_STATE_DEFAULT
+    );
+    primary_text_color_ = primary;
+    secondary_text_color_ = secondary;
+    text_colors_applied_ = true;
 }
 
 FLASHMEM void VirtualListOverlay::show() {

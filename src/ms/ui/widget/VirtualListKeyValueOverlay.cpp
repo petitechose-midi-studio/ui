@@ -29,6 +29,20 @@ constexpr int COMPACT_DETAIL_COL_W = 78;
 constexpr int COMPACT_SPARKLINE_W = 58;
 constexpr uint32_t SPARKLINE_MARKER_PERIOD_MS = 4U;
 
+FLASHMEM uint32_t sparklineColor(uint8_t rawRole) {
+    switch (static_cast<KeyValueSparklineColorRole>(rawRole)) {
+        case KeyValueSparklineColorRole::DATA:
+            return base_theme::color::MACRO_7_PURPLE;
+        case KeyValueSparklineColorRole::LIVE:
+            return base_theme::color::MACRO_5_CYAN;
+        case KeyValueSparklineColorRole::SECONDARY:
+            return base_theme::color::TEXT_SECONDARY;
+        case KeyValueSparklineColorRole::ACTION:
+        default:
+            return base_theme::color::ACTIVE;
+    }
+}
+
 FLASHMEM bool sameMarker(
     const KeyValueSparklineMarker& lhs,
     const KeyValueSparklineMarker& rhs
@@ -140,6 +154,8 @@ FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
     const bool enabled = next.enabled && next.sampleProvider != nullptr;
     const bool changed = cache.enabled != enabled ||
         cache.centerLine != (enabled && next.centerLine) ||
+        cache.curveColorRole != next.curveColorRole ||
+        cache.markerColorRole != next.markerColorRole ||
         cache.context != next.context ||
         cache.identity != next.identity ||
         cache.geometryRevision != next.geometryRevision ||
@@ -240,6 +256,18 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
 
+    const auto* nextVisuals = props.visualTokens
+        ? props.visualTokens
+        : &DEFAULT_LIST_VISUAL_TOKENS;
+    const bool visualStyleChanged = visual_tokens_ != nextVisuals;
+    visual_tokens_ = nextVisuals;
+    if (visualStyleChanged) {
+        overlay_.setTextColors(
+            visual_tokens_->primaryTextColor,
+            visual_tokens_->secondaryTextColor
+        );
+    }
+
     const bool dimStyleChanged = dim_unselected_ != props.dimUnselected;
     dim_unselected_ = props.dimUnselected;
     const bool compactStyleChanged = compact_facts_ != props.compactFacts;
@@ -282,11 +310,23 @@ FLASHMEM void VirtualListKeyValueOverlay::render(const VirtualListKeyValueOverla
 
     auto* list = overlay_.list();
     if (list) {
+        if (visualStyleChanged) {
+            const auto& visuals = *visual_tokens_;
+            list->selectionCursorStyle(
+                visuals.selectedSurfaceColor,
+                visuals.selectedSurfaceOpacity,
+                visuals.selectedSurfaceRadius
+            );
+            for (auto& widgets : slot_widgets_) {
+                widgets.highlightStyleApplied = false;
+            }
+        }
         const bool countChanged = list->setTotalCount(row_count_);
         list->setSelectedIndex(props.selectedIndex);
 
         if (!countChanged && overlay_.isVisible()) {
-            if (dimStyleChanged || compactStyleChanged || providerChanged) {
+            if (dimStyleChanged || compactStyleChanged || providerChanged ||
+                visualStyleChanged) {
                 list->invalidate();
             } else {
                 invalidateDirtyRows(dirtyIndices, dirtyCount);
@@ -621,7 +661,7 @@ FLASHMEM void VirtualListKeyValueOverlay::onSparklineDrawEvent(
                 layer,
                 points.data(),
                 static_cast<uint32_t>(pointCount),
-                base_theme::color::ACTIVE,
+                sparklineColor(widgets->sparkline.curveColorRole),
                 LV_OPA_COVER,
                 2
             );
@@ -695,7 +735,7 @@ FLASHMEM void VirtualListKeyValueOverlay::onSparklineDrawEvent(
             layer,
             marker.data(),
             marker.size(),
-            base_theme::color::ACTIVE,
+            sparklineColor(widgets->sparkline.markerColorRole),
             LV_OPA_COVER,
             2
         );
@@ -784,28 +824,49 @@ FLASHMEM void VirtualListKeyValueOverlay::applyHighlightStyle(SlotWidgets& widge
         return;
     }
 
+    auto* container = widgets.keyLabel
+        ? lv_obj_get_parent(widgets.keyLabel)
+        : nullptr;
+    const auto& visuals = *visual_tokens_;
+    detail::applyListFocusRail(container, isSelected, visuals);
+    const lv_opa_t contentOpacity = isSelected
+        ? LV_OPA_COVER
+        : (dim_unselected_ ? LV_OPA_60 : LV_OPA_80);
+
     if (widgets.iconLabel) {
         lv_obj_set_style_text_opa(
             widgets.iconLabel,
-            isSelected ? LV_OPA_COVER : LV_OPA_70,
+            contentOpacity,
             LV_STATE_DEFAULT
         );
     }
     if (widgets.keyLabel) {
         style::apply(widgets.keyLabel).textColor(
-            isSelected
-                ? base_theme::color::TEXT_PRIMARY
-                : (dim_unselected_
-                       ? base_theme::color::INACTIVE
-                       : base_theme::color::TEXT_SECONDARY));
+            isSelected ? visuals.primaryTextColor : visuals.secondaryTextColor
+        );
+        lv_obj_set_style_text_opa(
+            widgets.keyLabel,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
     }
     if (widgets.valueLabel) {
         style::apply(widgets.valueLabel).textColor(
-            isSelected
-                ? base_theme::color::ACTIVE
-                : (dim_unselected_
-                       ? base_theme::color::INACTIVE
-                       : base_theme::color::INACTIVE_LIGHTER));
+            isSelected ? visuals.primaryTextColor : visuals.secondaryTextColor
+        );
+        lv_obj_set_style_text_opa(
+            widgets.valueLabel,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
+    }
+    if (widgets.detailLabel) {
+        style::apply(widgets.detailLabel).textColor(visuals.secondaryTextColor);
+        lv_obj_set_style_text_opa(
+            widgets.detailLabel,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
     }
     if (widgets.sparklineSurface && widgets.sparklineVisible) {
         // Curve color remains semantic/active for every visible source. Focus

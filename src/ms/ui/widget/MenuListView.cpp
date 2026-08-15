@@ -9,6 +9,8 @@
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
 #include <oc/ui/lvgl/theme/BaseTheme.hpp>
 
+#include <ms/ui/widget/TextOverflow.hpp>
+
 namespace ms::ui {
 
 using namespace oc::ui::lvgl;
@@ -27,20 +29,21 @@ constexpr lv_coord_t VALUE_COL_W = 106;
 constexpr lv_coord_t DESCRIPTION_LABEL_COL_W = 136;
 constexpr lv_coord_t DESCRIPTION_VALUE_COL_W = 144;
 constexpr lv_coord_t COL_GAP = base_theme::layout::SPACE_MD;
-constexpr uint32_t DESCRIPTION_VALUE_COLOR = 0x8A8A8A;
 
-uint32_t valueColorFor(MenuRowKind kind) {
-    switch (kind) {
-        case MenuRowKind::Folder:
-            return base_theme::color::MACRO_5_CYAN;
-        case MenuRowKind::Toggle:
-            return base_theme::color::MACRO_4_GREEN;
-        case MenuRowKind::Action:
-            return base_theme::color::MACRO_2_ORANGE;
-        case MenuRowKind::Disabled:
-        case MenuRowKind::Value:
+uint32_t valueColorFor(
+    MenuRowTone tone,
+    const ListVisualTokens& visuals
+) {
+    switch (tone) {
+        case MenuRowTone::Positive:
+            return visuals.positiveTextColor;
+        case MenuRowTone::Warning:
+            return visuals.warningTextColor;
+        case MenuRowTone::Destructive:
+            return visuals.destructiveTextColor;
+        case MenuRowTone::Neutral:
         default:
-            return base_theme::color::ACTIVE;
+            return visuals.secondaryTextColor;
     }
 }
 
@@ -130,7 +133,7 @@ FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
 
     title_ = lv_label_create(header_);
     lv_label_set_text(title_, "");
-    lv_obj_set_style_text_font(title_, fonts.inter_14_bold, 0);
+    lv_obj_set_style_text_font(title_, fonts.context_title(), 0);
     lv_obj_set_style_text_color(title_, lv_color_hex(base_theme::color::TEXT_PRIMARY), 0);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(title_, 132);
@@ -194,21 +197,26 @@ FLASHMEM void MenuListView::syncRows(
         const auto* row = props.rows ? &props.rows[i] : nullptr;
         auto& current = rows_[static_cast<std::size_t>(i)];
         const MenuRowKind nextKind = row ? row->kind : MenuRowKind::Value;
+        const MenuRowTone nextTone = row ? row->tone : MenuRowTone::Neutral;
         const bool nextEnabled = row ? row->enabled : true;
         const bool nextValueAutoScroll = row ? row->valueAutoScroll : false;
-        const MenuRowValueRole nextValueRole = row ? row->valueRole : MenuRowValueRole::Value;
+        const MenuRowValueRole nextValueRole = row
+            ? row->valueRole
+            : MenuRowValueRole::Value;
         const bool labelChanged = copyTextIfChanged(current.label, row ? row->label : "");
         const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
         const bool kindChanged = current.kind != nextKind;
+        const bool toneChanged = current.tone != nextTone;
         const bool enabledChanged = current.enabled != nextEnabled;
         const bool valueAutoScrollChanged = current.valueAutoScroll != nextValueAutoScroll;
         const bool valueRoleChanged = current.valueRole != nextValueRole;
         current.kind = nextKind;
+        current.tone = nextTone;
         current.enabled = nextEnabled;
         current.valueAutoScroll = nextValueAutoScroll;
         current.valueRole = nextValueRole;
-        if ((labelChanged || valueChanged || kindChanged || enabledChanged ||
-             valueAutoScrollChanged || valueRoleChanged) &&
+        if ((labelChanged || valueChanged || kindChanged || toneChanged ||
+             enabledChanged || valueAutoScrollChanged || valueRoleChanged) &&
             dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<std::size_t>(dirtyCount++)] = i;
         }
@@ -219,6 +227,7 @@ FLASHMEM void MenuListView::syncRows(
         copyTextIfChanged(current.label, "");
         copyTextIfChanged(current.value, "");
         current.kind = MenuRowKind::Value;
+        current.tone = MenuRowTone::Neutral;
         current.enabled = true;
         current.valueAutoScroll = false;
         current.valueRole = MenuRowValueRole::Value;
@@ -243,6 +252,30 @@ FLASHMEM void MenuListView::invalidateDirtyRows(
 FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
     if (!container_) return;
 
+    const auto* nextVisuals = props.visualTokens
+        ? props.visualTokens
+        : &DEFAULT_LIST_VISUAL_TOKENS;
+    const bool visualsChanged = visual_tokens_ != nextVisuals;
+    visual_tokens_ = nextVisuals;
+    if (visualsChanged && list_) {
+        const auto& visuals = *visual_tokens_;
+        lv_obj_set_style_text_color(
+            title_, lv_color_hex(visuals.primaryTextColor), LV_STATE_DEFAULT
+        );
+        lv_obj_set_style_text_color(
+            meta_, lv_color_hex(visuals.secondaryTextColor), LV_STATE_DEFAULT
+        );
+        list_->selectionCursorStyle(
+            visuals.selectedSurfaceColor,
+            visuals.selectedSurfaceOpacity,
+            visuals.selectedSurfaceRadius
+        );
+        for (auto& widgets : slot_widgets_) {
+            widgets.rowStyleApplied = false;
+            widgets.highlightStyleApplied = false;
+        }
+    }
+
     applyHeaderLayout(props.headerLayout);
     setLabelTextIfChanged(title_, title_cache_, props.title);
     setLabelTextIfChanged(meta_, meta_cache_, props.meta);
@@ -255,7 +288,11 @@ FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
         const bool countChanged = list_->setTotalCount(row_count_);
         list_->setSelectedIndex(props.selectedIndex);
         if (!countChanged && list_->isVisible()) {
-            invalidateDirtyRows(dirtyIndices, dirtyCount);
+            if (visualsChanged) {
+                list_->invalidate();
+            } else {
+                invalidateDirtyRows(dirtyIndices, dirtyCount);
+            }
         }
     }
 }
@@ -300,30 +337,7 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
 
     applyValueLayout(widgets, row.valueRole);
     setLabelTextIfChanged(widgets.label, widgets.labelCache, row.label.text);
-    if (row.valueAutoScroll) {
-        ensureValueScroller(widgets, row.valueRole);
-        if (widgets.value) {
-            lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (widgets.valueScroller) {
-            lv_obj_clear_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
-        }
-        setLabelTextIfChanged(widgets.valueScroller.get(), widgets.valueScrollerCache, row.value.text);
-    } else {
-        if (widgets.valueScroller) {
-            if (widgets.valueScrollerActive) {
-                widgets.valueScroller->autoScroll(false);
-                widgets.valueScroller->setText("");
-                widgets.valueScrollerActive = false;
-                widgets.valueScrollerCache = {};
-            }
-            lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
-        }
-        if (widgets.value) {
-            lv_obj_clear_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
-        }
-        setLabelTextIfChanged(widgets.value, widgets.valueCache, row.value.text);
-    }
+    syncValuePresentation(widgets, row, isSelected);
     applyRowStyle(widgets, row);
 
     widgets.boundIndex = index;
@@ -410,10 +424,52 @@ FLASHMEM void MenuListView::applyValueLayout(SlotWidgets& widgets, MenuRowValueR
     if (widgets.valueScroller) {
         widgets.valueScroller->width(description ? DESCRIPTION_VALUE_COL_W : VALUE_COL_W)
             .alignment(description ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_RIGHT);
+        widgets.valueScrollerCache = {};
     }
 
     widgets.valueRole = role;
     widgets.valueLayoutApplied = true;
+}
+
+FLASHMEM void MenuListView::syncValuePresentation(
+    SlotWidgets& widgets,
+    const RowCache& row,
+    bool isSelected
+) {
+    const bool shouldScroll = row.valueAutoScroll && isSelected;
+    if (row.valueAutoScroll) ensureValueScroller(widgets, row.valueRole);
+
+    if (shouldScroll && widgets.valueScroller) {
+        if (widgets.value) lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
+        widgets.valueScroller->autoScroll(true);
+        setLabelTextIfChanged(
+            widgets.valueScroller.get(), widgets.valueScrollerCache, row.value.text);
+        widgets.valueScrollerActive = true;
+        return;
+    }
+
+    if (widgets.valueScroller) {
+        if (widgets.valueScrollerActive) {
+            widgets.valueScroller->autoScroll(false);
+            widgets.valueScroller->setText("");
+            widgets.valueScrollerCache = {};
+        }
+        widgets.valueScrollerActive = false;
+        lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
+    }
+    if (!widgets.value) return;
+
+    lv_obj_clear_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+    char displayed[TEXT_CACHE_SIZE] = {};
+    const lv_coord_t width = row.valueRole == MenuRowValueRole::Description
+        ? DESCRIPTION_VALUE_COL_W
+        : VALUE_COL_W;
+    text::formatEllipsized(
+        displayed, sizeof(displayed), row.value.text,
+        fonts.inter_14_semibold ? fonts.inter_14_semibold : LV_FONT_DEFAULT,
+        width);
+    setLabelTextIfChanged(widgets.value, widgets.valueCache, displayed);
 }
 
 FLASHMEM void MenuListView::applyHighlightStyle(
@@ -422,7 +478,6 @@ FLASHMEM void MenuListView::applyHighlightStyle(
     bool isSelected,
     const RowCache& row
 ) {
-    (void)slot;
     const bool shouldScroll = row.valueAutoScroll && isSelected;
     if (widgets.highlightStyleApplied &&
         widgets.highlighted == isSelected &&
@@ -433,21 +488,42 @@ FLASHMEM void MenuListView::applyHighlightStyle(
     widgets.highlighted = isSelected;
     widgets.highlightStyleApplied = true;
 
-    if (widgets.valueScroller && widgets.valueScrollerActive != shouldScroll) {
-        widgets.valueScroller->autoScroll(shouldScroll);
-        widgets.valueScroller->setText(widgets.valueScrollerCache.text);
-        widgets.valueScrollerActive = shouldScroll;
+    detail::applyListFocusRail(slot.container, isSelected, *visual_tokens_);
+
+    if (widgets.label) {
+        lv_obj_set_style_text_opa(
+            widgets.label,
+            isSelected ? LV_OPA_COVER : widgets.labelOpa,
+            LV_STATE_DEFAULT
+        );
     }
+    if (widgets.value) {
+        lv_obj_set_style_text_opa(
+            widgets.value,
+            isSelected ? LV_OPA_COVER : widgets.valueOpa,
+            LV_STATE_DEFAULT
+        );
+    }
+    if (widgets.valueScroller) {
+        lv_obj_set_style_text_opa(
+            widgets.valueScroller->getLabel(),
+            isSelected ? LV_OPA_COVER : widgets.valueOpa,
+            LV_STATE_DEFAULT
+        );
+    }
+
+    syncValuePresentation(widgets, row, isSelected);
 }
 
 FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& row) {
     const bool enabled = row.enabled && row.kind != MenuRowKind::Disabled;
     const bool description = row.valueRole == MenuRowValueRole::Description;
-    const uint32_t labelColor = enabled ? base_theme::color::TEXT_PRIMARY
-                                        : base_theme::color::INACTIVE_LIGHTER;
-    const uint32_t valueColor = enabled ? (description ? DESCRIPTION_VALUE_COLOR
-                                                       : valueColorFor(row.kind))
-                                        : base_theme::color::INACTIVE_LIGHTER;
+    const auto& visuals = *visual_tokens_;
+    const uint32_t labelColor = enabled ? visuals.primaryTextColor
+                                        : visuals.disabledTextColor;
+    const uint32_t valueColor = enabled ? (description ? visuals.secondaryTextColor
+                                                       : valueColorFor(row.tone, visuals))
+                                        : visuals.disabledTextColor;
     const lv_opa_t labelOpa = enabled ? LV_OPA_80 : LV_OPA_60;
     const lv_opa_t valueOpa = enabled ? (description ? LV_OPA_70 : LV_OPA_80)
                                       : LV_OPA_50;
@@ -483,6 +559,7 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
         widgets.valueOpa = valueOpa;
     }
     widgets.rowStyleApplied = true;
+    widgets.highlightStyleApplied = false;
 }
 
 }  // namespace ms::ui

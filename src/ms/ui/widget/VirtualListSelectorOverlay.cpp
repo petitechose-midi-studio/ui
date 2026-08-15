@@ -94,6 +94,20 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
     if (props.backdropOpacity != last_backdrop_opacity_) {
         overlay_.setBackdropOpacity(props.backdropOpacity);
     }
+    const auto* nextVisuals = props.visualTokens
+        ? props.visualTokens
+        : &DEFAULT_LIST_VISUAL_TOKENS;
+    const bool visualStyleChanged = nextVisuals != last_visual_tokens_;
+    if (visualStyleChanged) {
+        dataChanged = true;
+        for (auto& widgets : slot_widgets_) {
+            widgets.highlightStyleApplied = false;
+        }
+        overlay_.setTextColors(
+            nextVisuals->primaryTextColor,
+            nextVisuals->secondaryTextColor
+        );
+    }
 
     last_items_ = props.items;
     last_item_count_ = props.itemCount;
@@ -101,6 +115,7 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
     last_dim_unselected_ = props.dimUnselected;
     last_backdrop_opacity_ = props.backdropOpacity;
     last_data_revision_ = props.dataRevision;
+    last_visual_tokens_ = nextVisuals;
 
     current_props_ = props;
 
@@ -110,6 +125,14 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
     const int totalCount = (props.items && props.itemCount > 0) ? props.itemCount : 0;
     auto* list = overlay_.list();
     if (list) {
+        if (visualStyleChanged) {
+            const auto& visuals = *last_visual_tokens_;
+            list->selectionCursorStyle(
+                visuals.selectedSurfaceColor,
+                visuals.selectedSurfaceOpacity,
+                visuals.selectedSurfaceRadius
+            );
+        }
         const bool countChanged = list->setTotalCount(totalCount);
         list->setSelectedIndex(props.selectedIndex);
 
@@ -207,21 +230,34 @@ FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widge
         return;
     }
 
+    auto* container = widgets.label
+        ? lv_obj_get_parent(widgets.label)
+        : nullptr;
+    const auto& visuals = detail::resolveListVisualTokens(
+        current_props_.visualTokens
+    );
+    detail::applyListFocusRail(container, isSelected, visuals);
+    const lv_opa_t contentOpacity = isSelected
+        ? LV_OPA_COVER
+        : (current_props_.dimUnselected ? LV_OPA_60 : LV_OPA_80);
+
     if (widgets.label) {
         style::apply(widgets.label).textColor(
-            isSelected
-                ? base_theme::color::TEXT_PRIMARY
-                : (current_props_.dimUnselected
-                       ? base_theme::color::INACTIVE
-                       : base_theme::color::TEXT_SECONDARY));
+            isSelected ? visuals.primaryTextColor : visuals.secondaryTextColor
+        );
+        lv_obj_set_style_text_opa(
+            widgets.label,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
     }
     if (widgets.indexLabel) {
-        style::apply(widgets.indexLabel).textColor(
-            isSelected
-                ? base_theme::color::ACTIVE
-                : (current_props_.dimUnselected
-                       ? base_theme::color::INACTIVE
-                       : base_theme::color::INACTIVE_LIGHTER));
+        style::apply(widgets.indexLabel).textColor(visuals.secondaryTextColor);
+        lv_obj_set_style_text_opa(
+            widgets.indexLabel,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
     }
 
     widgets.highlighted = isSelected;

@@ -15,6 +15,7 @@
 
 #include <ms/ui/component/VirtualListOverlay.hpp>
 #include <ms/ui/widget/KeyValueSparkline.hpp>
+#include <ms/ui/widget/ListVisualTokens.hpp>
 
 namespace ms::ui {
 
@@ -62,8 +63,8 @@ struct VirtualListKeyValueOverlayProps {
     int rowCount = 0;
     int selectedIndex = 0;
     // Keep the default quiet detail grammar. Decision surfaces can opt out so
-    // every visible fact stays readable while focus is still carried by the
-    // selected-row background and active value color.
+    // every visible fact stays readable while focus is carried by the
+    // selected-row surface, rail and primary text.
     bool dimUnselected = true;
     // Dense source-registry layout: smaller gutters plus a dedicated facts
     // column, while the default overlay geometry remains unchanged.
@@ -73,6 +74,7 @@ struct VirtualListKeyValueOverlayProps {
     // Optional: bump when rows content changes (lets render() skip realloc/rebind).
     // 0 means "unknown".
     uint32_t dataRevision = 0;
+    const ListVisualTokens* visualTokens = nullptr;
 };
 
 class VirtualListKeyValueOverlay {
@@ -158,6 +160,7 @@ private:
     void* row_provider_context_ = nullptr;
 
     uint32_t last_data_revision_ = 0;
+    const ListVisualTokens* visual_tokens_ = nullptr;
     int last_row_count_ = 0;
     int row_count_ = 0;
     bool dim_unselected_ = true;
