@@ -25,6 +25,7 @@ constexpr lv_coord_t HEADER_PAD_LEFT = 16;
 constexpr lv_coord_t HEADER_PAD_RIGHT = 8;
 constexpr lv_coord_t ROW_PAD_LEFT = 16;
 constexpr lv_coord_t ROW_PAD_RIGHT = 16;
+constexpr lv_coord_t ICON_W = 16;
 constexpr lv_coord_t VALUE_COL_W = 106;
 constexpr lv_coord_t DESCRIPTION_LABEL_COL_W = 136;
 constexpr lv_coord_t DESCRIPTION_VALUE_COL_W = 144;
@@ -74,6 +75,19 @@ FLASHMEM bool MenuListView::copyTextIfChanged(TextCache& cache, const char* text
 
     std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
     cache.text[TEXT_CACHE_SIZE - 1] = '\0';
+    return true;
+}
+
+FLASHMEM bool MenuListView::copyIconIfChanged(IconCache& cache, const char* text) {
+    const char* source = text ? text : "";
+    char next[ICON_CACHE_SIZE] = {};
+    std::strncpy(next, source, ICON_CACHE_SIZE - 1);
+    next[ICON_CACHE_SIZE - 1] = '\0';
+
+    if (std::strncmp(cache.text, next, ICON_CACHE_SIZE) == 0) return false;
+
+    std::strncpy(cache.text, next, ICON_CACHE_SIZE - 1);
+    cache.text[ICON_CACHE_SIZE - 1] = '\0';
     return true;
 }
 
@@ -205,6 +219,7 @@ FLASHMEM void MenuListView::syncRows(
             : MenuRowValueRole::Value;
         const bool labelChanged = copyTextIfChanged(current.label, row ? row->label : "");
         const bool valueChanged = copyTextIfChanged(current.value, row ? row->value : "");
+        const bool iconChanged = copyIconIfChanged(current.icon, row ? row->icon : "");
         const bool kindChanged = current.kind != nextKind;
         const bool toneChanged = current.tone != nextTone;
         const bool enabledChanged = current.enabled != nextEnabled;
@@ -215,7 +230,7 @@ FLASHMEM void MenuListView::syncRows(
         current.enabled = nextEnabled;
         current.valueAutoScroll = nextValueAutoScroll;
         current.valueRole = nextValueRole;
-        if ((labelChanged || valueChanged || kindChanged || toneChanged ||
+        if ((labelChanged || valueChanged || iconChanged || kindChanged || toneChanged ||
              enabledChanged || valueAutoScrollChanged || valueRoleChanged) &&
             dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<std::size_t>(dirtyCount++)] = i;
@@ -226,6 +241,7 @@ FLASHMEM void MenuListView::syncRows(
         auto& current = rows_[static_cast<std::size_t>(i)];
         copyTextIfChanged(current.label, "");
         copyTextIfChanged(current.value, "");
+        copyIconIfChanged(current.icon, "");
         current.kind = MenuRowKind::Value;
         current.tone = MenuRowTone::Neutral;
         current.enabled = true;
@@ -256,7 +272,9 @@ FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
         ? props.visualTokens
         : &DEFAULT_LIST_VISUAL_TOKENS;
     const bool visualsChanged = visual_tokens_ != nextVisuals;
+    const bool iconFontChanged = icon_font_ != props.iconFont;
     visual_tokens_ = nextVisuals;
+    icon_font_ = props.iconFont;
     if (visualsChanged && list_) {
         const auto& visuals = *visual_tokens_;
         lv_obj_set_style_text_color(
@@ -275,6 +293,11 @@ FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
             widgets.highlightStyleApplied = false;
         }
     }
+    if (iconFontChanged) {
+        for (auto& widgets : slot_widgets_) {
+            widgets.iconFont = nullptr;
+        }
+    }
 
     applyHeaderLayout(props.headerLayout);
     setLabelTextIfChanged(title_, title_cache_, props.title);
@@ -288,7 +311,7 @@ FLASHMEM void MenuListView::render(const MenuListViewProps& props) {
         const bool countChanged = list_->setTotalCount(row_count_);
         list_->setSelectedIndex(props.selectedIndex);
         if (!countChanged && list_->isVisible()) {
-            if (visualsChanged) {
+            if (visualsChanged || iconFontChanged) {
                 list_->invalidate();
             } else {
                 invalidateDirtyRows(dirtyIndices, dirtyCount);
@@ -335,7 +358,23 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(index)];
 
-    applyValueLayout(widgets, row.valueRole);
+    const bool iconVisible = icon_font_ && row.icon.text[0] != '\0';
+    if (iconVisible) ensureIcon(widgets);
+    if (widgets.icon) {
+        if (icon_font_ && widgets.iconFont != icon_font_) {
+            lv_obj_set_style_text_font(widgets.icon, icon_font_, 0);
+            widgets.iconFont = icon_font_;
+        }
+        if (copyIconIfChanged(widgets.iconCache, row.icon.text)) {
+            lv_label_set_text(widgets.icon, widgets.iconCache.text);
+        }
+        if (iconVisible) {
+            lv_obj_clear_flag(widgets.icon, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(widgets.icon, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    applyValueLayout(widgets, row.valueRole, iconVisible);
     setLabelTextIfChanged(widgets.label, widgets.labelCache, row.label.text);
     syncValuePresentation(widgets, row, isSelected);
     applyRowStyle(widgets, row);
@@ -382,9 +421,24 @@ FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
     widgets.created = true;
 }
 
+FLASHMEM void MenuListView::ensureIcon(SlotWidgets& widgets) {
+    if (widgets.icon || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.icon = lv_label_create(parent);
+    lv_label_set_text(widgets.icon, "");
+    lv_obj_set_width(widgets.icon, ICON_W);
+    lv_obj_set_style_text_align(widgets.icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(widgets.icon, LV_LABEL_LONG_CLIP);
+    lv_obj_move_to_index(widgets.icon, 0);
+    widgets.rowStyleApplied = false;
+    widgets.highlightStyleApplied = false;
+}
+
 FLASHMEM void MenuListView::ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role) {
     if (widgets.valueScroller) {
-        applyValueLayout(widgets, role);
+        applyValueLayout(widgets, role, widgets.iconVisible);
         return;
     }
 
@@ -397,17 +451,27 @@ FLASHMEM void MenuListView::ensureValueScroller(SlotWidgets& widgets, MenuRowVal
         .ownsLvglObjects(false);
     lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
     widgets.valueLayoutApplied = false;
-    applyValueLayout(widgets, role);
+    applyValueLayout(widgets, role, widgets.iconVisible);
 }
 
-FLASHMEM void MenuListView::applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role) {
-    if (widgets.valueLayoutApplied && widgets.valueRole == role) return;
+FLASHMEM void MenuListView::applyValueLayout(
+    SlotWidgets& widgets,
+    MenuRowValueRole role,
+    bool iconVisible
+) {
+    if (widgets.valueLayoutApplied && widgets.valueRole == role &&
+        widgets.iconVisible == iconVisible) {
+        return;
+    }
 
     const bool description = role == MenuRowValueRole::Description;
     if (widgets.label) {
         if (description) {
             lv_obj_set_flex_grow(widgets.label, 0);
-            lv_obj_set_width(widgets.label, DESCRIPTION_LABEL_COL_W);
+            lv_obj_set_width(
+                widgets.label,
+                DESCRIPTION_LABEL_COL_W - (iconVisible ? ICON_W + COL_GAP : 0)
+            );
         } else {
             lv_obj_set_width(widgets.label, 0);
             lv_obj_set_flex_grow(widgets.label, 1);
@@ -428,6 +492,7 @@ FLASHMEM void MenuListView::applyValueLayout(SlotWidgets& widgets, MenuRowValueR
     }
 
     widgets.valueRole = role;
+    widgets.iconVisible = iconVisible;
     widgets.valueLayoutApplied = true;
 }
 
@@ -497,6 +562,13 @@ FLASHMEM void MenuListView::applyHighlightStyle(
             LV_STATE_DEFAULT
         );
     }
+    if (widgets.icon) {
+        lv_obj_set_style_text_opa(
+            widgets.icon,
+            isSelected ? LV_OPA_COVER : widgets.labelOpa,
+            LV_STATE_DEFAULT
+        );
+    }
     if (widgets.value) {
         lv_obj_set_style_text_opa(
             widgets.value,
@@ -529,6 +601,9 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
                                       : LV_OPA_50;
 
     if (!widgets.rowStyleApplied || widgets.labelColor != labelColor) {
+        if (widgets.icon) {
+            lv_obj_set_style_text_color(widgets.icon, lv_color_hex(labelColor), 0);
+        }
         if (widgets.label) {
             lv_obj_set_style_text_color(widgets.label, lv_color_hex(labelColor), 0);
         }
@@ -544,6 +619,9 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
         widgets.valueColor = valueColor;
     }
     if (!widgets.rowStyleApplied || widgets.labelOpa != labelOpa) {
+        if (widgets.icon) {
+            lv_obj_set_style_text_opa(widgets.icon, labelOpa, 0);
+        }
         if (widgets.label) {
             lv_obj_set_style_text_opa(widgets.label, labelOpa, 0);
         }

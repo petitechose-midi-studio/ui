@@ -54,6 +54,7 @@ enum class MenuListHeaderLayout : uint8_t {
 struct MenuRow {
     const char* label = "";
     const char* value = "";
+    const char* icon = "";
     MenuRowKind kind = MenuRowKind::Value;
     MenuRowTone tone = MenuRowTone::Neutral;
     bool enabled = true;
@@ -69,6 +70,7 @@ struct MenuListViewProps {
     int selectedIndex = 0;
     uint32_t dataRevision = 0;
     MenuListHeaderLayout headerLayout = MenuListHeaderLayout::Horizontal;
+    const lv_font_t* iconFont = nullptr;
     const ListVisualTokens* visualTokens = nullptr;
 };
 
@@ -90,14 +92,20 @@ private:
     static constexpr int VISIBLE_SLOTS = 5;
     static constexpr int MAX_ROWS = 16;
     static constexpr std::size_t TEXT_CACHE_SIZE = 48;
+    static constexpr std::size_t ICON_CACHE_SIZE = 8;
 
     struct TextCache {
         char text[TEXT_CACHE_SIZE] = {};
     };
 
+    struct IconCache {
+        char text[ICON_CACHE_SIZE] = {};
+    };
+
     struct RowCache {
         TextCache label;
         TextCache value;
+        IconCache icon;
         MenuRowKind kind = MenuRowKind::Value;
         MenuRowTone tone = MenuRowTone::Neutral;
         bool enabled = true;
@@ -107,6 +115,7 @@ private:
 
     struct SlotWidgets {
         bool created = false;
+        lv_obj_t* icon = nullptr;
         lv_obj_t* label = nullptr;
         lv_obj_t* value = nullptr;
         std::unique_ptr<oc::ui::lvgl::Label> valueScroller;
@@ -115,12 +124,15 @@ private:
         bool rowStyleApplied = false;
         bool valueLayoutApplied = false;
         bool valueScrollerActive = false;
+        bool iconVisible = false;
         MenuRowValueRole valueRole = MenuRowValueRole::Value;
+        const lv_font_t* iconFont = nullptr;
         uint32_t labelColor = 0;
         uint32_t valueColor = 0;
         lv_opa_t labelOpa = LV_OPA_TRANSP;
         lv_opa_t valueOpa = LV_OPA_TRANSP;
         int boundIndex = -1;
+        IconCache iconCache;
         TextCache labelCache;
         TextCache valueCache;
         TextCache valueScrollerCache;
@@ -130,12 +142,13 @@ private:
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
+    void ensureIcon(SlotWidgets& widgets);
     void ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role);
     void applyHighlightStyle(oc::ui::lvgl::widget::VirtualSlot& slot,
                              SlotWidgets& widgets,
                              bool isSelected,
                              const RowCache& row);
-    void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role);
+    void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role, bool iconVisible);
     void syncValuePresentation(SlotWidgets& widgets, const RowCache& row,
                                bool isSelected);
     void applyHeaderLayout(MenuListHeaderLayout layout);
@@ -145,6 +158,7 @@ private:
                   int& dirtyCount);
     void invalidateDirtyRows(const std::array<int, MAX_ROWS>& dirtyIndices, int dirtyCount);
     static bool copyTextIfChanged(TextCache& cache, const char* text);
+    static bool copyIconIfChanged(IconCache& cache, const char* text);
     static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
     static void setLabelTextIfChanged(oc::ui::lvgl::Label* label, TextCache& cache, const char* text);
 
@@ -160,6 +174,7 @@ private:
     TextCache meta_cache_{};
 
     uint32_t last_data_revision_ = 0;
+    const lv_font_t* icon_font_ = nullptr;
     const ListVisualTokens* visual_tokens_ = nullptr;
     int last_row_count_ = 0;
     int row_count_ = 0;
