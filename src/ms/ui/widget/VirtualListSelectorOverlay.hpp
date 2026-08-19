@@ -22,6 +22,8 @@ struct VirtualListSelectorOverlayProps {
     const char* title = "";
     const char* meta = "";
     const char* const* items = nullptr;
+    const char* const* icons = nullptr;
+    const lv_font_t* iconFont = nullptr;
     int itemCount = 0;
     int selectedIndex = 0;
     bool showIndexColumn = true;
@@ -55,14 +57,20 @@ public:
 private:
     static constexpr int VISIBLE_SLOTS = 5;
     static constexpr size_t TEXT_CACHE_SIZE = 48;
+    static constexpr size_t ICON_CACHE_SIZE = 8;
 
     struct TextCache {
         char text[TEXT_CACHE_SIZE] = {};
     };
 
+    struct IconCache {
+        char text[ICON_CACHE_SIZE] = {};
+    };
+
     struct SlotWidgets {
         bool created = false;
         lv_obj_t* indexLabel = nullptr;
+        lv_obj_t* icon = nullptr;
         lv_obj_t* label = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
@@ -70,16 +78,21 @@ private:
         bool indexVisible = true;
         bool indexVisibilityApplied = false;
         int boundIndex = -1;
+        const lv_font_t* iconFont = nullptr;
         TextCache indexCache;
+        IconCache iconCache;
         TextCache labelCache;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
+    void ensureIcon(SlotWidgets& widgets);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
     static bool copyTextIfChanged(TextCache& cache, const char* text);
+    static bool copyIconIfChanged(IconCache& cache, const char* text);
     static void setLabelTextIfChanged(lv_obj_t* label, TextCache& cache, const char* text);
+    static void setIconTextIfChanged(lv_obj_t* label, IconCache& cache, const char* text);
 
     VirtualListOverlay overlay_;
     std::array<SlotWidgets, VISIBLE_SLOTS> slot_widgets_{};
@@ -87,6 +100,8 @@ private:
     VirtualListSelectorOverlayProps current_props_{};
 
     const char* const* last_items_ = nullptr;
+    const char* const* last_icons_ = nullptr;
+    const lv_font_t* last_icon_font_ = nullptr;
     int last_item_count_ = 0;
     bool last_show_index_column_ = true;
     bool last_dim_unselected_ = true;

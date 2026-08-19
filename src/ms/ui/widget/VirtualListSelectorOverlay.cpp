@@ -20,6 +20,7 @@ constexpr int ITEM_HEIGHT = 32;
 constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
 constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int INDEX_W = 24;
+constexpr int ICON_W = 16;
 }
 
 FLASHMEM VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent)
@@ -61,6 +62,22 @@ FLASHMEM bool VirtualListSelectorOverlay::copyTextIfChanged(TextCache& cache, co
     return true;
 }
 
+FLASHMEM bool VirtualListSelectorOverlay::copyIconIfChanged(
+    IconCache& cache,
+    const char* text
+) {
+    const char* source = text ? text : "";
+    char next[ICON_CACHE_SIZE] = {};
+    std::strncpy(next, source, ICON_CACHE_SIZE - 1);
+    next[ICON_CACHE_SIZE - 1] = '\0';
+
+    if (std::strncmp(cache.text, next, ICON_CACHE_SIZE) == 0) return false;
+
+    std::strncpy(cache.text, next, ICON_CACHE_SIZE - 1);
+    cache.text[ICON_CACHE_SIZE - 1] = '\0';
+    return true;
+}
+
 FLASHMEM void VirtualListSelectorOverlay::setLabelTextIfChanged(
     lv_obj_t* label,
     TextCache& cache,
@@ -68,6 +85,16 @@ FLASHMEM void VirtualListSelectorOverlay::setLabelTextIfChanged(
 ) {
     if (!label) return;
     if (!copyTextIfChanged(cache, text)) return;
+    lv_label_set_text(label, cache.text);
+}
+
+FLASHMEM void VirtualListSelectorOverlay::setIconTextIfChanged(
+    lv_obj_t* label,
+    IconCache& cache,
+    const char* text
+) {
+    if (!label) return;
+    if (!copyIconIfChanged(cache, text)) return;
     lv_label_set_text(label, cache.text);
 }
 
@@ -83,6 +110,9 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
         dataChanged = true;
     }
     if (props.items != last_items_ || props.itemCount != last_item_count_) {
+        dataChanged = true;
+    }
+    if (props.icons != last_icons_ || props.iconFont != last_icon_font_) {
         dataChanged = true;
     }
     if (props.showIndexColumn != last_show_index_column_) {
@@ -110,6 +140,8 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
     }
 
     last_items_ = props.items;
+    last_icons_ = props.icons;
+    last_icon_font_ = props.iconFont;
     last_item_count_ = props.itemCount;
     last_show_index_column_ = props.showIndexColumn;
     last_dim_unselected_ = props.dimUnselected;
@@ -163,6 +195,25 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
     }
     if (widgets.label) {
         setLabelTextIfChanged(widgets.label, widgets.labelCache, name);
+    }
+
+    const char* icon = "";
+    if (current_props_.icons && index >= 0 && index < current_props_.itemCount) {
+        icon = current_props_.icons[index] ? current_props_.icons[index] : "";
+    }
+    const bool iconVisible = current_props_.iconFont && icon[0] != '\0';
+    if (iconVisible) ensureIcon(widgets);
+    if (widgets.icon) {
+        if (current_props_.iconFont && widgets.iconFont != current_props_.iconFont) {
+            lv_obj_set_style_text_font(widgets.icon, current_props_.iconFont, 0);
+            widgets.iconFont = current_props_.iconFont;
+        }
+        setIconTextIfChanged(widgets.icon, widgets.iconCache, icon);
+        if (iconVisible) {
+            lv_obj_clear_flag(widgets.icon, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(widgets.icon, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     if (widgets.indexLabel) {
@@ -224,6 +275,20 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     widgets.created = true;
 }
 
+FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {
+    if (widgets.icon || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.icon = lv_label_create(parent);
+    lv_label_set_text(widgets.icon, "");
+    lv_obj_set_width(widgets.icon, ICON_W);
+    lv_obj_set_style_text_align(widgets.icon, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(widgets.icon, LV_LABEL_LONG_CLIP);
+    lv_obj_move_to_index(widgets.icon, 1);
+    widgets.highlightStyleApplied = false;
+}
+
 FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widgets, bool isSelected) {
     if (widgets.highlightStyleApplied && widgets.highlighted == isSelected &&
         widgets.dimUnselected == current_props_.dimUnselected) {
@@ -247,6 +312,16 @@ FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widge
         );
         lv_obj_set_style_text_opa(
             widgets.label,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
+    }
+    if (widgets.icon) {
+        style::apply(widgets.icon).textColor(
+            isSelected ? visuals.primaryTextColor : visuals.secondaryTextColor
+        );
+        lv_obj_set_style_text_opa(
+            widgets.icon,
             contentOpacity,
             LV_STATE_DEFAULT
         );
