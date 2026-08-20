@@ -33,10 +33,17 @@ public:
 
     void setTitle(const char* text);
     void setMeta(const char* text);
+    void setBreadcrumb(const char* text);
+    void setMetaIcon(
+        const char* text,
+        const lv_font_t* font,
+        uint32_t color
+    );
     void setTextColors(uint32_t primary, uint32_t secondary);
     void setBackdropOpacity(lv_opa_t opacity) {
         overlay_.setBackdropOpacity(opacity);
     }
+    void setContentVisible(bool visible);
 
     // Convenience
     void configureList(int visibleCount, int itemHeight);
@@ -63,12 +70,19 @@ private:
 
     lv_obj_t* header_row_ = nullptr;
     lv_obj_t* title_label_ = nullptr;
+    lv_obj_t* meta_icon_label_ = nullptr;
     lv_obj_t* meta_label_ = nullptr;
+    lv_obj_t* breadcrumb_label_ = nullptr;
     TextCache title_cache_{};
+    TextCache meta_icon_cache_{};
     TextCache meta_cache_{};
+    TextCache breadcrumb_cache_{};
+    const lv_font_t* meta_icon_font_ = nullptr;
+    uint32_t meta_icon_color_ = 0U;
     uint32_t primary_text_color_ = 0;
     uint32_t secondary_text_color_ = 0;
     bool text_colors_applied_ = false;
+    bool content_visible_ = true;
 
     std::unique_ptr<oc::ui::lvgl::widget::VirtualList> list_;
 };
