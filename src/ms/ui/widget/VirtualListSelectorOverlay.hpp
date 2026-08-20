@@ -21,8 +21,14 @@ namespace ms::ui {
 struct VirtualListSelectorOverlayProps {
     const char* title = "";
     const char* meta = "";
+    const char* breadcrumb = "";
+    const char* metaIcon = nullptr;
+    const lv_font_t* metaIconFont = nullptr;
+    uint32_t metaIconColor = 0U;
     const char* const* items = nullptr;
     const char* const* icons = nullptr;
+    const char* const* values = nullptr;
+    const uint32_t* iconColors = nullptr;
     const lv_font_t* iconFont = nullptr;
     int itemCount = 0;
     int selectedIndex = 0;
@@ -51,6 +57,9 @@ public:
     VirtualListSelectorOverlay& operator=(const VirtualListSelectorOverlay&) = delete;
 
     void render(const VirtualListSelectorOverlayProps& props);
+    void setContentVisible(bool visible) {
+        overlay_.setContentVisible(visible);
+    }
 
     lv_obj_t* getElement() const { return overlay_.getElement(); }
 
@@ -72,6 +81,7 @@ private:
         lv_obj_t* indexLabel = nullptr;
         lv_obj_t* icon = nullptr;
         lv_obj_t* label = nullptr;
+        lv_obj_t* value = nullptr;
         bool highlighted = false;
         bool highlightStyleApplied = false;
         bool dimUnselected = true;
@@ -82,6 +92,7 @@ private:
         TextCache indexCache;
         IconCache iconCache;
         TextCache labelCache;
+        TextCache valueCache;
     };
 
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
@@ -101,6 +112,8 @@ private:
 
     const char* const* last_items_ = nullptr;
     const char* const* last_icons_ = nullptr;
+    const char* const* last_values_ = nullptr;
+    const uint32_t* last_icon_colors_ = nullptr;
     const lv_font_t* last_icon_font_ = nullptr;
     int last_item_count_ = 0;
     bool last_show_index_column_ = true;

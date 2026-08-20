@@ -21,6 +21,7 @@ constexpr int PAD_H = base_theme::layout::SPACE_XL; // 16
 constexpr int COL_GAP = base_theme::layout::SPACE_MD; // 8
 constexpr int INDEX_W = 24;
 constexpr int ICON_W = 16;
+constexpr int VALUE_W = 58;
 }
 
 FLASHMEM VirtualListSelectorOverlay::VirtualListSelectorOverlay(lv_obj_t* parent)
@@ -106,14 +107,28 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
 
     // Track whether we need to force a rebind (data or per-slot layout changed).
     bool dataChanged = false;
-    if (props.dataRevision != 0 && props.dataRevision != last_data_revision_) {
+    const bool revisionChanged = props.dataRevision != 0 &&
+        props.dataRevision != last_data_revision_;
+    if (revisionChanged) {
         dataChanged = true;
+        for (auto& widgets : slot_widgets_) {
+            widgets.highlightStyleApplied = false;
+        }
     }
     if (props.items != last_items_ || props.itemCount != last_item_count_) {
         dataChanged = true;
     }
-    if (props.icons != last_icons_ || props.iconFont != last_icon_font_) {
+    const bool iconStyleChanged =
+        props.iconColors != last_icon_colors_;
+    if (props.icons != last_icons_ || props.values != last_values_ ||
+        iconStyleChanged ||
+        props.iconFont != last_icon_font_) {
         dataChanged = true;
+    }
+    if (iconStyleChanged) {
+        for (auto& widgets : slot_widgets_) {
+            widgets.highlightStyleApplied = false;
+        }
     }
     if (props.showIndexColumn != last_show_index_column_) {
         dataChanged = true;
@@ -141,6 +156,8 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
 
     last_items_ = props.items;
     last_icons_ = props.icons;
+    last_values_ = props.values;
+    last_icon_colors_ = props.iconColors;
     last_icon_font_ = props.iconFont;
     last_item_count_ = props.itemCount;
     last_show_index_column_ = props.showIndexColumn;
@@ -153,6 +170,12 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
 
     overlay_.setTitle(props.title);
     overlay_.setMeta(props.meta);
+    overlay_.setBreadcrumb(props.breadcrumb);
+    overlay_.setMetaIcon(
+        props.metaIcon,
+        props.metaIconFont,
+        props.metaIconColor
+    );
 
     const int totalCount = (props.items && props.itemCount > 0) ? props.itemCount : 0;
     auto* list = overlay_.list();
@@ -195,6 +218,22 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
     }
     if (widgets.label) {
         setLabelTextIfChanged(widgets.label, widgets.labelCache, name);
+    }
+
+    const char* value = "";
+    if (current_props_.values && index >= 0 &&
+        index < current_props_.itemCount) {
+        value = current_props_.values[index]
+            ? current_props_.values[index]
+            : "";
+    }
+    if (widgets.value) {
+        setLabelTextIfChanged(widgets.value, widgets.valueCache, value);
+        if (value[0] != '\0') {
+            lv_obj_clear_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     const char* icon = "";
@@ -272,6 +311,19 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
         lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, LV_STATE_DEFAULT);
     }
 
+    widgets.value = lv_label_create(container);
+    lv_obj_set_width(widgets.value, VALUE_W);
+    lv_obj_set_style_text_align(
+        widgets.value, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT
+    );
+    lv_label_set_long_mode(widgets.value, LV_LABEL_LONG_DOT);
+    if (fonts.meta_label()) {
+        lv_obj_set_style_text_font(
+            widgets.value, fonts.meta_label(), LV_STATE_DEFAULT
+        );
+    }
+    lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+
     widgets.created = true;
 }
 
@@ -317,11 +369,25 @@ FLASHMEM void VirtualListSelectorOverlay::applyHighlightStyle(SlotWidgets& widge
         );
     }
     if (widgets.icon) {
-        style::apply(widgets.icon).textColor(
-            isSelected ? visuals.primaryTextColor : visuals.secondaryTextColor
-        );
+        uint32_t iconColor = isSelected
+            ? visuals.primaryTextColor
+            : visuals.secondaryTextColor;
+        if (current_props_.iconColors && widgets.boundIndex >= 0 &&
+            widgets.boundIndex < current_props_.itemCount &&
+            current_props_.iconColors[widgets.boundIndex] != 0U) {
+            iconColor = current_props_.iconColors[widgets.boundIndex];
+        }
+        style::apply(widgets.icon).textColor(iconColor);
         lv_obj_set_style_text_opa(
             widgets.icon,
+            contentOpacity,
+            LV_STATE_DEFAULT
+        );
+    }
+    if (widgets.value) {
+        style::apply(widgets.value).textColor(visuals.secondaryTextColor);
+        lv_obj_set_style_text_opa(
+            widgets.value,
             contentOpacity,
             LV_STATE_DEFAULT
         );
