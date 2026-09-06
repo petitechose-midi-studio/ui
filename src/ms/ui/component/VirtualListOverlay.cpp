@@ -224,8 +224,13 @@ FLASHMEM void VirtualListOverlay::setContentVisible(bool visible) {
 FLASHMEM void VirtualListOverlay::show() {
     if (overlay_.isVisible()) return;
 
-    overlay_.show();
+    // The presentation registry may already have revealed the retained root.
+    // Bind and settle its children while hidden: no intermediate geometry is
+    // displayed, and LVGL need not invalidate every row during the first layout.
+    overlay_.hide();
     if (list_ && content_visible_) list_->show();
+    lv_obj_update_layout(overlay_.getElement());
+    overlay_.show();
 }
 
 FLASHMEM void VirtualListOverlay::hide() {
