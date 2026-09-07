@@ -242,20 +242,14 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
         }
     }
 
-    if (widgets.indexLabel) {
+    if (current_props_.showIndexColumn) {
+        ensureIndex(widgets);
         char indexStr[12];
         oc::type::text::formatUnsigned(indexStr, sizeof(indexStr), static_cast<unsigned>(index + 1));
         setLabelTextIfChanged(widgets.indexLabel, widgets.indexCache, indexStr);
-
-        if (!widgets.indexVisibilityApplied || widgets.indexVisible != current_props_.showIndexColumn) {
-            if (current_props_.showIndexColumn) {
-                lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
-            }
-            widgets.indexVisible = current_props_.showIndexColumn;
-            widgets.indexVisibilityApplied = true;
-        }
+        if (widgets.indexLabel) lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
+    } else if (widgets.indexLabel) {
+        lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
     }
 
     // A recycled slot can keep the same focus state but represent a different
@@ -289,15 +283,6 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     lv_obj_set_style_pad_column(container, COL_GAP, LV_STATE_DEFAULT);
 
     // All row text is single-line; intrinsic height measurement is unnecessary.
-    widgets.indexLabel = lv_label_create(container);
-    lv_obj_set_width(widgets.indexLabel, INDEX_W);
-    lv_obj_set_style_text_align(widgets.indexLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
-    if (fonts.list_item_label) {
-        lv_obj_set_style_text_font(widgets.indexLabel, fonts.list_item_label, LV_STATE_DEFAULT);
-    }
-    style::apply(widgets.indexLabel).textColor(base_theme::color::INACTIVE);
-    lv_obj_set_height(widgets.indexLabel, lv_obj_get_style_text_font(widgets.indexLabel, LV_PART_MAIN)->line_height);
-
     widgets.label = lv_label_create(container);
     lv_obj_set_width(widgets.label, 0);
     lv_obj_set_flex_grow(widgets.label, 1);
@@ -332,6 +317,22 @@ FLASHMEM void VirtualListSelectorOverlay::ensureValue(SlotWidgets& widgets) {
     widgets.highlightStyleApplied = false;
 }
 
+FLASHMEM void VirtualListSelectorOverlay::ensureIndex(SlotWidgets& widgets) {
+    if (widgets.indexLabel || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.indexLabel = lv_label_create(parent);
+    lv_obj_set_width(widgets.indexLabel, INDEX_W);
+    lv_obj_set_style_text_align(widgets.indexLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
+    if (fonts.list_item_label) {
+        lv_obj_set_style_text_font(widgets.indexLabel, fonts.list_item_label, LV_STATE_DEFAULT);
+    }
+    lv_obj_set_height(widgets.indexLabel, lv_obj_get_style_text_font(widgets.indexLabel, LV_PART_MAIN)->line_height);
+    lv_obj_move_to_index(widgets.indexLabel, 0);
+    widgets.highlightStyleApplied = false;
+}
+
 FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {
     if (widgets.icon || !widgets.label) return;
     auto* parent = lv_obj_get_parent(widgets.label);
@@ -342,7 +343,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {
     lv_obj_set_width(widgets.icon, ICON_W);
     lv_obj_set_style_text_align(widgets.icon, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(widgets.icon, LV_LABEL_LONG_CLIP);
-    lv_obj_move_to_index(widgets.icon, 1);
+    lv_obj_move_to_index(widgets.icon, widgets.indexLabel ? 1 : 0);
     widgets.highlightStyleApplied = false;
 }
 

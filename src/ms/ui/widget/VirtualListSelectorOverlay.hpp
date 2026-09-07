@@ -85,8 +85,6 @@ private:
         bool highlighted = false;
         bool highlightStyleApplied = false;
         bool dimUnselected = true;
-        bool indexVisible = true;
-        bool indexVisibilityApplied = false;
         int boundIndex = -1;
         const lv_font_t* iconFont = nullptr;
         TextCache indexCache;
@@ -99,6 +97,7 @@ private:
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
     void ensureValue(SlotWidgets& widgets);
+    void ensureIndex(SlotWidgets& widgets);
     void ensureIcon(SlotWidgets& widgets);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
     static bool copyTextIfChanged(TextCache& cache, const char* text);

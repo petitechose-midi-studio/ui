@@ -105,6 +105,42 @@ static void checkRetainedText() {
     std::puts("retained text: 13968 bounded assignments match the reference");
 }
 
+static void checkOptionalSelectorIndex(lv_obj_t* parent, lv_display_t* display) {
+    const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
+    const char* icons[] = {"A", "B", "C", "D", "E", "F"};
+    for (bool iconsFirst : {false, true}) {
+        ms::ui::VirtualListSelectorOverlay selector(parent);
+        ms::ui::VirtualListSelectorOverlayProps props{
+            .items = names, .icons = iconsFirst ? icons : nullptr,
+            .iconFont = LV_FONT_DEFAULT, .itemCount = 6, .selectedIndex = 2,
+            .showIndexColumn = false, .visible = true};
+        selector.render(props);
+        lv_refr_now(display);
+        const unsigned withoutIndex = countObjects(selector.getElement());
+        props.showIndexColumn = true;
+        selector.render(props);
+        lv_refr_now(display);
+        assert(countObjects(selector.getElement()) == withoutIndex + 5);
+        props.icons = icons;
+        selector.render(props);
+        lv_refr_now(display);
+        const unsigned complete = countObjects(selector.getElement());
+        for (bool showIndex : {false, true, false}) {
+            props.showIndexColumn = showIndex;
+            selector.render(props);
+            lv_refr_now(display);
+            assert(countObjects(selector.getElement()) == complete);
+            auto* icon = findVisibleText(selector.getElement(), "C");
+            auto* name = findVisibleText(selector.getElement(), "Two");
+            auto* index = findVisibleText(selector.getElement(), "3");
+            assert(icon && name && (index != nullptr) == showIndex);
+            assert(lv_obj_get_x(icon) < lv_obj_get_x(name));
+            if (index) assert(lv_obj_get_x(index) < lv_obj_get_x(icon));
+        }
+    }
+    std::puts("selector optional indexes: lazy labels preserve icon/name order");
+}
+
 static void checkKeyValueTransitions(lv_obj_t* parent, lv_display_t* display) {
     ms::ui::VirtualListKeyValueOverlay overlay(parent);
     std::array<ms::ui::KeyValueRow, 16> rows{};
@@ -404,6 +440,7 @@ int main(int argc, char** argv) {
     checkSparklineDamage(parent, display, pixels);
     checkHiddenSparklineMarkers(parent, display);
     checkOptionalSelectorValues(parent, display, pixels);
+    checkOptionalSelectorIndex(parent, display);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
