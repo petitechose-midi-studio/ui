@@ -1,7 +1,7 @@
 #include "VirtualListKeyValueOverlay.hpp"
 
 #include <algorithm>
-#include <cstring>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
@@ -135,16 +135,7 @@ FLASHMEM VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
 }
 
 FLASHMEM bool VirtualListKeyValueOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[TEXT_CACHE_SIZE] = {};
-    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
-    next[TEXT_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
-    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(

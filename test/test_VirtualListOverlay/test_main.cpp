@@ -8,6 +8,7 @@
 #include <ms/ui/widget/VirtualListSelectorOverlay.hpp>
 #include <ms/ui/widget/VirtualListKeyValueOverlay.hpp>
 #include <ms/ui/widget/MenuListView.hpp>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 // Exercise the real component with LVGL's built-in font, without loading assets.
 CoreFonts fonts;
@@ -29,6 +30,30 @@ static lv_obj_t* findVisibleText(lv_obj_t* root, const char* text) {
         if (auto* label = findVisibleText(lv_obj_get_child(root, i), text)) return label;
     }
     return nullptr;
+}
+
+static void checkRetainedText() {
+    // Equivalence with the former temporary-buffer algorithm, including
+    // clipped prefixes, shortened values, null, and repeated assignments.
+    for (size_t capacity = 1; capacity <= 48; ++capacity) {
+        std::array<char, 49> actual{}, expected{};
+        actual[capacity] = expected[capacity] = '!';
+        for (size_t length = 0; length <= 96; ++length) {
+            std::array<char, 97> source{};
+            source.fill('A');
+            source[length] = '\0';
+            for (const char* input : {source.data(), source.data(), static_cast<char*>(nullptr)}) {
+                std::array<char, 49> next{};
+                std::strncpy(next.data(), input ? input : "", capacity - 1);
+                const bool changed = std::strncmp(expected.data(), next.data(), capacity) != 0;
+                std::memcpy(expected.data(), next.data(), capacity);
+                assert(ms::ui::text::copyTruncatedIfChanged(actual.data(), capacity, input) == changed);
+                assert(actual == expected);
+            }
+        }
+    }
+    assert(!ms::ui::text::copyTruncatedIfChanged(nullptr, 0, "ignored"));
+    std::puts("retained text: 13968 bounded assignments match the reference");
 }
 
 static void checkKeyValueTransitions(lv_obj_t* parent, lv_display_t* display) {
@@ -65,6 +90,7 @@ static void checkKeyValueTransitions(lv_obj_t* parent, lv_display_t* display) {
 }
 
 int main(int argc, char** argv) {
+    checkRetainedText();
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
     lv_init();
     auto* display = lv_display_create(320, 240);

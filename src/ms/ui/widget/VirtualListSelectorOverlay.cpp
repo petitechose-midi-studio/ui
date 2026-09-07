@@ -1,6 +1,6 @@
 #include "VirtualListSelectorOverlay.hpp"
 
-#include <cstring>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/type/TextFormat.hpp>
@@ -51,32 +51,14 @@ FLASHMEM VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
 }
 
 FLASHMEM bool VirtualListSelectorOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[TEXT_CACHE_SIZE] = {};
-    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
-    next[TEXT_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
-    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM bool VirtualListSelectorOverlay::copyIconIfChanged(
     IconCache& cache,
     const char* text
 ) {
-    const char* source = text ? text : "";
-    char next[ICON_CACHE_SIZE] = {};
-    std::strncpy(next, source, ICON_CACHE_SIZE - 1);
-    next[ICON_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, ICON_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, ICON_CACHE_SIZE - 1);
-    cache.text[ICON_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM void VirtualListSelectorOverlay::setLabelTextIfChanged(

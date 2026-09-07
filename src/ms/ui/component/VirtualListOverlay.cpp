@@ -1,6 +1,6 @@
 #include "VirtualListOverlay.hpp"
 
-#include <cstring>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
@@ -176,18 +176,9 @@ FLASHMEM void VirtualListOverlay::setTextIfChanged(
     TextCache& cache,
     const char* text
 ) {
-    if (!label) return;
-
-    const char* source = text ? text : "";
-    std::array<char, TEXT_CACHE_SIZE> next{};
-    std::strncpy(next.data(), source, next.size() - 1U);
-    next.back() = '\0';
-    if (std::strncmp(cache.data(), next.data(), cache.size()) == 0) {
-        return;
+    if (label && text::copyTruncatedIfChanged(cache.data(), cache.size(), text)) {
+        lv_label_set_text(label, cache.data());
     }
-
-    cache = next;
-    lv_label_set_text(label, cache.data());
 }
 
 FLASHMEM void VirtualListOverlay::setTextColors(
