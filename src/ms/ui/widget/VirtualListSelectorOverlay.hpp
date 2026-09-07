@@ -98,6 +98,7 @@ private:
     void bindSlot(oc::ui::lvgl::widget::VirtualSlot& slot, int index, bool isSelected);
     void updateSlotHighlight(oc::ui::lvgl::widget::VirtualSlot& slot, bool isSelected);
     void ensureSlotWidgets(lv_obj_t* container, int slotIndex);
+    void ensureValue(SlotWidgets& widgets);
     void ensureIcon(SlotWidgets& widgets);
     void applyHighlightStyle(SlotWidgets& widgets, bool isSelected);
     static bool copyTextIfChanged(TextCache& cache, const char* text);

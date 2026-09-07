@@ -213,6 +213,7 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
             ? current_props_.values[index]
             : "";
     }
+    if (value[0] != '\0') ensureValue(widgets);
     if (widgets.value) {
         setLabelTextIfChanged(widgets.value, widgets.valueCache, value);
         if (value[0] != '\0') {
@@ -306,7 +307,15 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     }
     lv_obj_set_height(widgets.label, lv_obj_get_style_text_font(widgets.label, LV_PART_MAIN)->line_height);
 
-    widgets.value = lv_label_create(container);
+    widgets.created = true;
+}
+
+FLASHMEM void VirtualListSelectorOverlay::ensureValue(SlotWidgets& widgets) {
+    if (widgets.value || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.value = lv_label_create(parent);
     lv_obj_set_width(widgets.value, VALUE_W);
     lv_obj_set_style_text_align(
         widgets.value, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT
@@ -320,7 +329,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_height(widgets.value, lv_obj_get_style_text_font(widgets.value, LV_PART_MAIN)->line_height);
 
-    widgets.created = true;
+    widgets.highlightStyleApplied = false;
 }
 
 FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {

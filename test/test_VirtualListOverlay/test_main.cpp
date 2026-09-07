@@ -32,6 +32,45 @@ static lv_obj_t* findVisibleText(lv_obj_t* root, const char* text) {
     return nullptr;
 }
 
+static unsigned countObjects(lv_obj_t* root) {
+    unsigned count = 1;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(root); ++i) {
+        count += countObjects(lv_obj_get_child(root, i));
+    }
+    return count;
+}
+
+static void checkOptionalSelectorValues(lv_obj_t* parent, lv_display_t* display,
+                                      const std::array<uint16_t, 320 * 240>& pixels) {
+    ms::ui::VirtualListSelectorOverlay selector(parent);
+    const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
+    const char* values[] = {"10", "20", "30", "40", "50", "60"};
+    ms::ui::VirtualListSelectorOverlayProps props{
+        .items = names, .itemCount = 6, .selectedIndex = 2, .visible = true};
+    selector.render(props);
+    lv_refr_now(display);
+    const unsigned withoutValues = countObjects(selector.getElement());
+    for (bool showValues : {true, false, true}) {
+        props.values = showValues ? values : nullptr;
+        selector.render(props);
+        lv_refr_now(display);
+        // Optional columns are created once, on demand, and retained for reuse.
+        assert(countObjects(selector.getElement()) == withoutValues + 5);
+        auto* value = findVisibleText(selector.getElement(), "30");
+        assert((value != nullptr) == showValues);
+        if (value) {
+            assert(lv_color_eq(lv_obj_get_style_text_color(value, LV_PART_MAIN),
+                lv_color_hex(ms::ui::DEFAULT_LIST_VISUAL_TOKENS.secondaryTextColor)));
+            assert(lv_obj_get_style_text_opa(value, LV_PART_MAIN) == LV_OPA_COVER);
+        }
+        const auto incremental = pixels;
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        assert(incremental == pixels);
+    }
+    std::puts("selector optional values: five lazy labels, retained style and pixels");
+}
+
 static void checkRetainedText() {
     // Equivalence with the former temporary-buffer algorithm, including
     // clipped prefixes, shortened values, null, and repeated assignments.
@@ -364,6 +403,7 @@ int main(int argc, char** argv) {
     checkMenuValuePresentation(parent, display, !requireHiddenBinding);
     checkSparklineDamage(parent, display, pixels);
     checkHiddenSparklineMarkers(parent, display);
+    checkOptionalSelectorValues(parent, display, pixels);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
