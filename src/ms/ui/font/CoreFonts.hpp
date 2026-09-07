@@ -22,15 +22,9 @@ struct CoreFonts {
     lv_font_t* inter_12_medium = nullptr;
     lv_font_t* inter_13_medium = nullptr;
     lv_font_t* inter_13_bold = nullptr;
-    lv_font_t* inter_14_light = nullptr;
     lv_font_t* inter_14_regular = nullptr;
     lv_font_t* inter_14_medium = nullptr;
     lv_font_t* inter_14_semibold = nullptr;
-    lv_font_t* inter_14_bold = nullptr;
-
-    // Splash fonts (essential)
-    lv_font_t* splash_title = nullptr;
-    lv_font_t* splash_version = nullptr;
 
     // Semantic aliases (set by linkCoreFontAliases)
     lv_font_t* parameter_label = nullptr;
