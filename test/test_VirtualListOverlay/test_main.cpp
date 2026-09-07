@@ -163,6 +163,54 @@ static void checkMenuValuePresentation(lv_obj_t* parent, lv_display_t* display, 
     fonts.inter_14_semibold = const_cast<lv_font_t*>(LV_FONT_DEFAULT);
 }
 
+static void checkSparklineDamage(lv_obj_t* parent, lv_display_t* display,
+                                const std::array<uint16_t, 320 * 240>& pixels) {
+    for (const uint16_t width : {0U, 1U, 2U, 58U, 110U, 320U, 65535U}) {
+        for (uint32_t column = 0; column <= UINT16_MAX; ++column) {
+            const uint16_t expected = width < 2U ? 0U : static_cast<uint16_t>(
+                (std::min<uint64_t>(column, width - 1U) * 65535ULL) / (width - 1U));
+            assert(ms::ui::keyValueSparklinePositionQ16(column, width) == expected);
+        }
+    }
+    ms::ui::VirtualListKeyValueOverlay overlay(parent);
+    ms::ui::KeyValueSparklineMarker marker{};
+    ms::ui::KeyValueRow row{.key = "Source", .sparkline = {
+        .context = &marker, .identity = 1, .geometryRevision = 1,
+        .enabled = true, .centerLine = true,
+        .sampleProvider = [](const ms::ui::KeyValueSparkline&, uint16_t position,
+                             uint16_t previous, bool hasPrevious,
+                             ms::ui::KeyValueSparklineSample& out) {
+            out.valueQ16 = position < 32768U ? 16000U : 48000U;
+            out.discontinuityBefore = hasPrevious && previous < 32768U && position >= 32768U;
+            return true;
+        },
+        .markerProvider = [](const ms::ui::KeyValueSparkline& descriptor, uint32_t,
+                             ms::ui::KeyValueSparklineMarker& out) {
+            out = *static_cast<const ms::ui::KeyValueSparklineMarker*>(descriptor.context);
+            return true;
+        },
+    }};
+    for (bool compact : {false, true}) {
+        overlay.render({.rows = &row, .rowCount = 1, .compactFacts = compact,
+                        .visible = true, .dataRevision = 1});
+        lv_refr_now(display);
+        for (const uint16_t position : {0U, 1000U, 1001U, 32000U, 32768U, 65535U}) {
+            for (bool visible : {true, false, true}) {
+                marker = {.positionQ16 = position, .valueQ16 = position, .visible = visible};
+                lv_tick_inc(4);
+                lv_timer_handler();
+                lv_refr_now(display);
+                const auto incremental = pixels;
+                lv_obj_invalidate(lv_screen_active());
+                lv_refr_now(display);
+                assert(incremental == pixels);
+                std::printf("sparkline compact=%d position=%u visible=%d rgb565=%016llx\n",
+                    compact, position, visible, static_cast<unsigned long long>(pixelHash(pixels)));
+            }
+        }
+    }
+}
+
 int main(int argc, char** argv) {
     checkRetainedText();
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
@@ -273,6 +321,7 @@ int main(int argc, char** argv) {
     }
     checkKeyValueTransitions(parent, display);
     checkMenuValuePresentation(parent, display, !requireHiddenBinding);
+    checkSparklineDamage(parent, display, pixels);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
