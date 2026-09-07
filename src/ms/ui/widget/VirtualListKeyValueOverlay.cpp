@@ -729,7 +729,8 @@ FLASHMEM void VirtualListKeyValueOverlay::serviceSparklineMarkers() {
     const uint32_t nowMs = lv_tick_get();
     for (auto& widgets : slot_widgets_) {
         if (!widgets.sparklineVisible || !widgets.sparklineSurface ||
-            widgets.sparkline.markerProvider == nullptr) {
+            widgets.sparkline.markerProvider == nullptr ||
+            !lv_obj_is_visible(widgets.sparklineSurface)) {
             continue;
         }
         KeyValueSparklineMarker next{};

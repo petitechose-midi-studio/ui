@@ -211,6 +211,47 @@ static void checkSparklineDamage(lv_obj_t* parent, lv_display_t* display,
     }
 }
 
+static void checkHiddenSparklineMarkers(lv_obj_t* parent, lv_display_t* display) {
+    ms::ui::VirtualListKeyValueOverlay overlay(parent);
+    unsigned calls = 0;
+    std::array<ms::ui::KeyValueRow, 5> rows{};
+    for (auto& row : rows) row = {.key = "Source", .sparkline = {
+        .context = &calls, .identity = 1, .geometryRevision = 1, .enabled = true,
+        .sampleProvider = [](const ms::ui::KeyValueSparkline&, uint16_t position,
+                             uint16_t, bool, ms::ui::KeyValueSparklineSample& out) {
+            out.valueQ16 = position;
+            return true;
+        },
+        .markerProvider = [](const ms::ui::KeyValueSparkline& descriptor, uint32_t,
+                             ms::ui::KeyValueSparklineMarker& out) {
+            ++*static_cast<unsigned*>(const_cast<void*>(descriptor.context));
+            out = {};
+            return true;
+        },
+    }};
+    const auto service = [&]() {
+        calls = 0;
+        lv_tick_inc(4);
+        lv_timer_handler();
+        return calls;
+    };
+    overlay.render({.rows = rows.data(), .rowCount = 5, .visible = true, .dataRevision = 1});
+    lv_refr_now(display);
+    assert(service() == 5);
+    overlay.render({.rows = rows.data(), .rowCount = 1, .visible = true, .dataRevision = 2});
+    lv_refr_now(display);
+    const auto singleRowCalls = service();
+    std::printf("sparkline markers after shrinking to one row: %u\n", singleRowCalls);
+    std::fflush(stdout);
+    assert(singleRowCalls == 1);
+    for (auto* hidden : {overlay.getElement(), parent}) {
+        lv_obj_add_flag(hidden, LV_OBJ_FLAG_HIDDEN);
+        assert(service() == 0);
+        lv_obj_remove_flag(hidden, LV_OBJ_FLAG_HIDDEN);
+        assert(service() == 1); // No explicit render: the parent's reveal is enough.
+    }
+}
+
 int main(int argc, char** argv) {
     checkRetainedText();
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
@@ -322,6 +363,7 @@ int main(int argc, char** argv) {
     checkKeyValueTransitions(parent, display);
     checkMenuValuePresentation(parent, display, !requireHiddenBinding);
     checkSparklineDamage(parent, display, pixels);
+    checkHiddenSparklineMarkers(parent, display);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
