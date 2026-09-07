@@ -53,6 +53,16 @@ static void checkRetainedText() {
         }
     }
     assert(!ms::ui::text::copyTruncatedIfChanged(nullptr, 0, "ignored"));
+    std::array<char, 0> empty{};
+    assert(!ms::ui::text::copyTruncatedIfChanged(empty, "ignored"));
+    std::array<char, 8> retained{}, pointerCache{};
+    for (const char* input : {"Long clipped text", "Long clipped suffix", "Short", "", "Again"}) {
+        assert(ms::ui::text::copyTruncatedIfChanged(retained, input) ==
+            ms::ui::text::copyTruncatedIfChanged(pointerCache.data(), pointerCache.size(), input));
+        assert(retained == pointerCache);
+        // Feedback may pass its own retained text back to the presenter.
+        assert(!ms::ui::text::copyTruncatedIfChanged(retained, retained.data()));
+    }
     std::puts("retained text: 13968 bounded assignments match the reference");
 }
 

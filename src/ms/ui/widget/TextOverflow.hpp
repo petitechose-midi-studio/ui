@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 
 #include <lvgl.h>
@@ -14,6 +15,11 @@ inline constexpr const char ELLIPSIS[] = "\xE2\x80\xA6";
  * existing byte truncation policy; pixel/UTF-8 ellipsis is formatEllipsized's job.
  */
 bool copyTruncatedIfChanged(char* output, std::size_t outputSize, const char* source);
+
+template <std::size_t Capacity>
+bool copyTruncatedIfChanged(std::array<char, Capacity>& output, const char* source) {
+    return copyTruncatedIfChanged(output.data(), output.size(), source);
+}
 
 /**
  * Copy text into a fixed buffer and append one typographic ellipsis when it
