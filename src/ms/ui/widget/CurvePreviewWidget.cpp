@@ -39,8 +39,15 @@ FLASHMEM void drawLine(
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
     dsc.base.layer = layer;
-    dsc.points = points;
-    dsc.point_cnt = count;
+    if (count == 2U) {
+        // LVGL copies a polyline's point array. A single segment fits in the
+        // descriptor, avoiding that allocation for guides and band columns.
+        dsc.p1 = points[0];
+        dsc.p2 = points[1];
+    } else {
+        dsc.points = points;
+        dsc.point_cnt = count;
+    }
     dsc.color = lv_color_hex(color);
     dsc.opa = opacity;
     dsc.width = width;
