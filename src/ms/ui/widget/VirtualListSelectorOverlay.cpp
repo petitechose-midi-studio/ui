@@ -296,6 +296,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     lv_obj_set_style_pad_right(container, PAD_H, LV_STATE_DEFAULT);
     lv_obj_set_style_pad_column(container, COL_GAP, LV_STATE_DEFAULT);
 
+    // All row text is single-line; intrinsic height measurement is unnecessary.
     widgets.indexLabel = lv_label_create(container);
     lv_obj_set_width(widgets.indexLabel, INDEX_W);
     lv_obj_set_style_text_align(widgets.indexLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
@@ -303,13 +304,16 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
         lv_obj_set_style_text_font(widgets.indexLabel, fonts.list_item_label, LV_STATE_DEFAULT);
     }
     style::apply(widgets.indexLabel).textColor(base_theme::color::INACTIVE);
+    lv_obj_set_height(widgets.indexLabel, lv_obj_get_style_text_font(widgets.indexLabel, LV_PART_MAIN)->line_height);
 
     widgets.label = lv_label_create(container);
+    lv_obj_set_width(widgets.label, 0);
     lv_obj_set_flex_grow(widgets.label, 1);
     lv_label_set_long_mode(widgets.label, LV_LABEL_LONG_DOT);
     if (fonts.list_item_label) {
         lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, LV_STATE_DEFAULT);
     }
+    lv_obj_set_height(widgets.label, lv_obj_get_style_text_font(widgets.label, LV_PART_MAIN)->line_height);
 
     widgets.value = lv_label_create(container);
     lv_obj_set_width(widgets.value, VALUE_W);
@@ -323,6 +327,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
         );
     }
     lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(widgets.value, lv_obj_get_style_text_font(widgets.value, LV_PART_MAIN)->line_height);
 
     widgets.created = true;
 }

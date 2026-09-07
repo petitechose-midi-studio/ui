@@ -53,7 +53,10 @@ FLASHMEM void VirtualListOverlay::createHeader() {
     lv_obj_set_style_pad_bottom(header_row_, HEADER_PAD_BOTTOM, LV_STATE_DEFAULT);
     lv_obj_set_style_pad_column(header_row_, HEADER_COL_GAP, LV_STATE_DEFAULT);
 
+    // These labels never wrap: use the font's line height instead of measuring
+    // their text during every flex layout. Flex owns the title's width.
     title_label_ = lv_label_create(header_row_);
+    lv_obj_set_width(title_label_, 0);
     lv_obj_set_flex_grow(title_label_, 1);
     lv_label_set_long_mode(title_label_, LV_LABEL_LONG_DOT);
     lv_label_set_text(title_label_, "");
@@ -61,6 +64,7 @@ FLASHMEM void VirtualListOverlay::createHeader() {
         lv_obj_set_style_text_font(title_label_, fonts.inter_14_semibold, LV_STATE_DEFAULT);
     }
     style::apply(title_label_).textColor(base_theme::color::TEXT_PRIMARY);
+    lv_obj_set_height(title_label_, lv_obj_get_style_text_font(title_label_, LV_PART_MAIN)->line_height);
 
     meta_icon_label_ = lv_label_create(header_row_);
     // Generated icon fonts may report a wider advance than the visible
@@ -82,6 +86,7 @@ FLASHMEM void VirtualListOverlay::createHeader() {
         lv_obj_set_style_text_font(meta_label_, fonts.inter_13_medium, LV_STATE_DEFAULT);
     }
     style::apply(meta_label_).textColor(base_theme::color::TEXT_SECONDARY);
+    lv_obj_set_height(meta_label_, lv_obj_get_style_text_font(meta_label_, LV_PART_MAIN)->line_height);
 
     breadcrumb_label_ = lv_label_create(overlay_.header());
     lv_obj_set_width(breadcrumb_label_, LV_PCT(100));
@@ -101,6 +106,7 @@ FLASHMEM void VirtualListOverlay::createHeader() {
     style::apply(breadcrumb_label_).textColor(
         base_theme::color::TEXT_SECONDARY
     );
+    lv_obj_set_height(breadcrumb_label_, lv_obj_get_style_text_font(breadcrumb_label_, LV_PART_MAIN)->line_height);
     lv_obj_set_style_text_opa(
         breadcrumb_label_, LV_OPA_70, LV_STATE_DEFAULT
     );

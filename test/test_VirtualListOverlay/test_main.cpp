@@ -5,9 +5,19 @@
 
 #include <ms/ui/component/VirtualListOverlay.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
+#include <ms/ui/widget/VirtualListSelectorOverlay.hpp>
 
 // Exercise the real component with LVGL's built-in font, without loading assets.
 CoreFonts fonts;
+
+static uint64_t pixelHash(const std::array<uint16_t, 320 * 240>& pixels) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (auto pixel : pixels) {
+        hash = (hash ^ (pixel & 255U)) * 1099511628211ULL;
+        hash = (hash ^ (pixel >> 8U)) * 1099511628211ULL;
+    }
+    return hash;
+}
 
 int main(int argc, char** argv) {
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
@@ -67,15 +77,31 @@ int main(int argc, char** argv) {
             lv_obj_invalidate(screen);
             lv_refr_now(display);
             assert(firstFrame == pixels);
-            uint64_t hash = 14695981039346656037ULL;
-            for (auto pixel : pixels) {
-                hash = (hash ^ (pixel & 255U)) * 1099511628211ULL;
-                hash = (hash ^ (pixel >> 8U)) * 1099511628211ULL;
-            }
-            std::printf("pass=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(hash));
+            std::printf("pass=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(pixelHash(pixels)));
             const unsigned settled = openingBinds;
             overlay.show();
             assert(openingBinds == settled); // Idempotent show.
+        }
+    }
+    {
+        ms::ui::VirtualListSelectorOverlay selector(parent);
+        const char* names[] = {"Macros", "Clips", "Modulation", "Project", "Device", "Extra"};
+        const char* values[] = {"1", "2", "3", "4", "5", "6"};
+        for (int pass = 0; pass < 4; ++pass) {
+            selector.render({.visible = false});
+            lv_obj_set_size(parent, pass == 2 ? 280 : 320, pass == 2 ? 190 : 210);
+            // The presentation registry reveals the retained root first.
+            lv_obj_clear_flag(selector.getElement(), LV_OBJ_FLAG_HIDDEN);
+            selector.render({.title = "Views", .items = names,
+                .values = pass == 2 ? values : nullptr,
+                .itemCount = 6, .selectedIndex = pass,
+                .showIndexColumn = pass == 3, .visible = true});
+            lv_refr_now(display);
+            const auto firstFrame = pixels;
+            lv_obj_invalidate(screen);
+            lv_refr_now(display);
+            assert(firstFrame == pixels);
+            std::printf("selector=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(pixelHash(pixels)));
         }
     }
     lv_display_delete(display);
