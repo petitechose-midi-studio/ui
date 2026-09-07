@@ -148,14 +148,17 @@ FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
     title_ = lv_label_create(header_);
     lv_label_set_text(title_, "");
     lv_obj_set_style_text_font(title_, fonts.context_title(), 0);
+    lv_obj_set_height(title_, lv_obj_get_style_text_font(title_, LV_PART_MAIN)->line_height);
     lv_obj_set_style_text_color(title_, lv_color_hex(base_theme::color::TEXT_PRIMARY), 0);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(title_, 132);
 
     meta_ = lv_label_create(header_);
     lv_label_set_text(meta_, "");
+    lv_obj_set_width(meta_, 0);
     lv_obj_set_flex_grow(meta_, 1);
     lv_obj_set_style_text_font(meta_, fonts.inter_12_medium, 0);
+    lv_obj_set_height(meta_, lv_obj_get_style_text_font(meta_, LV_PART_MAIN)->line_height);
     lv_obj_set_style_text_color(meta_, lv_color_hex(base_theme::color::TEXT_SECONDARY), 0);
     lv_obj_set_style_text_opa(meta_, LV_OPA_80, 0);
     lv_label_set_long_mode(meta_, LV_LABEL_LONG_DOT);
@@ -407,9 +410,12 @@ FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
 
     widgets.label = lv_label_create(row);
     lv_label_set_text(widgets.label, "");
+    lv_obj_set_width(widgets.label, 0);
     lv_obj_set_flex_grow(widgets.label, 1);
     lv_label_set_long_mode(widgets.label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, 0);
+    // As in selectors, single-line rows do not need intrinsic text heights.
+    lv_obj_set_height(widgets.label, lv_obj_get_style_text_font(widgets.label, LV_PART_MAIN)->line_height);
 
     widgets.value = lv_label_create(row);
     lv_label_set_text(widgets.value, "");
@@ -417,6 +423,7 @@ FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
     lv_obj_set_style_text_align(widgets.value, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_long_mode(widgets.value, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.value, fonts.inter_14_semibold, 0);
+    lv_obj_set_height(widgets.value, lv_obj_get_style_text_font(widgets.value, LV_PART_MAIN)->line_height);
 
     widgets.created = true;
 }

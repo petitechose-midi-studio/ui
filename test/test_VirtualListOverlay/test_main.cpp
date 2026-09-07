@@ -6,6 +6,7 @@
 #include <ms/ui/component/VirtualListOverlay.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
 #include <ms/ui/widget/VirtualListSelectorOverlay.hpp>
+#include <ms/ui/widget/MenuListView.hpp>
 
 // Exercise the real component with LVGL's built-in font, without loading assets.
 CoreFonts fonts;
@@ -102,6 +103,28 @@ int main(int argc, char** argv) {
             lv_refr_now(display);
             assert(firstFrame == pixels);
             std::printf("selector=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(pixelHash(pixels)));
+        }
+    }
+    {
+        fonts.inter_12_medium = fonts.inter_14_semibold = fonts.list_item_label =
+            const_cast<lv_font_t*>(LV_FONT_DEFAULT);
+        ms::ui::MenuListView menu(parent);
+        ms::ui::MenuRow rows[] = {{.label = "Name", .value = "A long project name"},
+            {.label = "Tempo", .value = "120.0"}, {.label = "Scale", .value = "C minor"}};
+        for (int pass = 0; pass < 4; ++pass) {
+            menu.hide();
+            lv_obj_set_size(parent, pass == 2 ? 280 : 320, pass == 2 ? 190 : 210);
+            menu.render({.title = "Project", .meta = "Settings", .rows = rows,
+                .rowCount = 3, .selectedIndex = pass % 3,
+                .headerLayout = pass % 2 ? ms::ui::MenuListHeaderLayout::Stacked
+                                        : ms::ui::MenuListHeaderLayout::Horizontal});
+            menu.show();
+            lv_refr_now(display);
+            const auto firstFrame = pixels;
+            lv_obj_invalidate(screen);
+            lv_refr_now(display);
+            assert(firstFrame == pixels);
+            std::printf("menu=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(pixelHash(pixels)));
         }
     }
     lv_display_delete(display);

@@ -11,6 +11,9 @@ add_executable(virtual_list_overlay test_main.cpp
     ../../src/ms/ui/component/VirtualListOverlay.cpp
     ../../src/ms/ui/component/LayoutOverlay.cpp
     ../../src/ms/ui/widget/VirtualListSelectorOverlay.cpp
+    ../../src/ms/ui/widget/MenuListView.cpp
+    ../../src/ms/ui/widget/TextOverflow.cpp
+    "${OC_ROOT}/ui-lvgl-components/src/widget/Label.cpp"
     "${OC_ROOT}/ui-lvgl-components/src/widget/VirtualList.cpp")
 target_compile_features(virtual_list_overlay PRIVATE cxx_std_17)
 target_include_directories(virtual_list_overlay PRIVATE ../../src
