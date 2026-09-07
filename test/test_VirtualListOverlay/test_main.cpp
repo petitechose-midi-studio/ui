@@ -6,6 +6,7 @@
 #include <ms/ui/component/VirtualListOverlay.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
 #include <ms/ui/widget/VirtualListSelectorOverlay.hpp>
+#include <ms/ui/widget/VirtualListKeyValueOverlay.hpp>
 #include <ms/ui/widget/MenuListView.hpp>
 
 // Exercise the real component with LVGL's built-in font, without loading assets.
@@ -18,6 +19,49 @@ static uint64_t pixelHash(const std::array<uint16_t, 320 * 240>& pixels) {
         hash = (hash ^ (pixel >> 8U)) * 1099511628211ULL;
     }
     return hash;
+}
+
+static lv_obj_t* findVisibleText(lv_obj_t* root, const char* text) {
+    if (!lv_obj_is_visible(root)) return nullptr;
+    if (lv_obj_check_type(root, &lv_label_class) &&
+        std::strcmp(lv_label_get_text(root), text) == 0) return root;
+    for (uint32_t i = 0; i < lv_obj_get_child_count(root); ++i) {
+        if (auto* label = findVisibleText(lv_obj_get_child(root, i), text)) return label;
+    }
+    return nullptr;
+}
+
+static void checkKeyValueTransitions(lv_obj_t* parent, lv_display_t* display) {
+    ms::ui::VirtualListKeyValueOverlay overlay(parent);
+    std::array<ms::ui::KeyValueRow, 16> rows{};
+    for (auto& row : rows) row = {.key = "Fixed", .value = "42"};
+    const auto provider = [](void* context, int index, ms::ui::KeyValueRowBuffer& out) {
+        ++*static_cast<unsigned*>(context);
+        std::snprintf(out.key.data(), out.key.size(), "Source %d", index);
+    };
+    for (int virtualCount : {0, 1, 5, 16, 17, 4096}) {
+        for (int fixedCount : {0, 1, 16}) {
+            unsigned calls = 0;
+            overlay.render({.rowProvider = provider, .rowProviderContext = &calls,
+                .rowCount = virtualCount, .selectedIndex = virtualCount - 1,
+                .visible = true, .dataRevision = 1});
+            assert(calls <= 15); // Only visible rows, even for thousands of sources.
+            // The same retained overlay serves picker and small detail panels.
+            overlay.render({.rows = rows.data(), .rowCount = fixedCount,
+                .visible = true, .dataRevision = 1});
+            lv_refr_now(display);
+            assert((findVisibleText(overlay.getElement(), "Fixed") != nullptr) == (fixedCount > 0));
+            // Regrowing a cached row must not reuse stale text, even at the same revision.
+            rows[15].value = "Updated";
+            overlay.render({.rows = rows.data(), .rowCount = 16, .selectedIndex = 15,
+                .visible = true, .dataRevision = 2});
+            lv_refr_now(display);
+            assert(findVisibleText(overlay.getElement(), "Updated"));
+            rows[15].value = "42";
+            overlay.render({.visible = false});
+        }
+    }
+    std::puts("key-value provider/fixed transitions: 18 passed");
 }
 
 int main(int argc, char** argv) {
@@ -126,6 +170,28 @@ int main(int argc, char** argv) {
             assert(firstFrame == pixels);
             std::printf("menu=%d rgb565=%016llx\n", pass, static_cast<unsigned long long>(pixelHash(pixels)));
         }
+    }
+    checkKeyValueTransitions(parent, display);
+    {
+        ms::ui::VirtualListSelectorOverlay selector(parent);
+        const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
+        const char* icons[] = {"A", "B", "C", "D", "E", "F"};
+        const uint32_t colors[] = {0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff};
+        for (int selected : {2, 3, 2}) {
+            selector.render({.items = names, .icons = icons, .iconColors = colors,
+                .iconFont = LV_FONT_DEFAULT, .itemCount = 6, .selectedIndex = selected,
+                .visible = true, .dataRevision = 1});
+            lv_refr_now(display);
+            unsigned visible = 0;
+            for (size_t i = 0; i < 6; ++i) {
+                auto* icon = findVisibleText(selector.getElement(), icons[i]);
+                if (!icon) continue;
+                ++visible;
+                assert(lv_color_eq(lv_obj_get_style_text_color(icon, LV_PART_MAIN), lv_color_hex(colors[i])));
+            }
+            assert(visible == 5);
+        }
+        std::puts("selector recycled rows preserve semantic colors");
     }
     lv_display_delete(display);
     lv_deinit();

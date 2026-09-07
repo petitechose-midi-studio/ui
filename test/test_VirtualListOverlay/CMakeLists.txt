@@ -11,6 +11,7 @@ add_executable(virtual_list_overlay test_main.cpp
     ../../src/ms/ui/component/VirtualListOverlay.cpp
     ../../src/ms/ui/component/LayoutOverlay.cpp
     ../../src/ms/ui/widget/VirtualListSelectorOverlay.cpp
+    ../../src/ms/ui/widget/VirtualListKeyValueOverlay.cpp
     ../../src/ms/ui/widget/MenuListView.cpp
     ../../src/ms/ui/widget/TextOverflow.cpp
     "${OC_ROOT}/ui-lvgl-components/src/widget/Label.cpp"
@@ -20,6 +21,7 @@ target_include_directories(virtual_list_overlay PRIVATE ../../src
     "${OC_ROOT}/ui-lvgl/src" "${OC_ROOT}/ui-lvgl-components/include"
     "${OC_ROOT}/framework/src")
 target_link_libraries(virtual_list_overlay PRIVATE lvgl::lvgl)
+target_compile_definitions(virtual_list_overlay PRIVATE _GLIBCXX_ASSERTIONS)
 if(MSVC)
     target_compile_options(virtual_list_overlay PRIVATE /UNDEBUG)
 else()

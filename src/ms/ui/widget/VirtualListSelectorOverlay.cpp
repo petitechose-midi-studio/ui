@@ -271,6 +271,11 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
         }
     }
 
+    // A recycled slot can keep the same focus state but represent a different
+    // semantic color. Its previous highlight style is no longer authoritative.
+    if (widgets.boundIndex != index && current_props_.iconColors) {
+        widgets.highlightStyleApplied = false;
+    }
     widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
 }

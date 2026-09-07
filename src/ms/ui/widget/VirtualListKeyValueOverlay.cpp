@@ -216,17 +216,9 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         }
     }
 
-    for (int i = nextCount; i < row_count_; ++i) {
-        auto& current = rows_[static_cast<size_t>(i)];
-        copyTextIfChanged(current.key, "");
-        copyTextIfChanged(current.value, "");
-        copyTextIfChanged(current.detail, "");
-        copyTextIfChanged(current.icon, "");
-        current.iconFont = nullptr;
-        current.iconColor = 0;
-        copySparklineIfChanged(current.sparkline, KeyValueSparkline{});
-    }
-
+    // Rows outside nextCount are not read. If the list grows, the loop above
+    // refreshes them before binding; a provider's logical count never indexes
+    // this fixed cache.
     last_data_revision_ = props.dataRevision;
     last_row_count_ = nextCount;
     row_count_ = nextCount;
