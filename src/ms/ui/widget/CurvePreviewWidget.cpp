@@ -184,6 +184,8 @@ FLASHMEM void drawImpactBand(
 ) {
     const std::size_t count = geometry.sampleCount;
     if (range.size() < 2U || opacity == LV_OPA_TRANSP) return;
+    OC_PERF_SCOPE(perfBand, "ui.curve-preview.band-draw");
+    OC_PERF_UNITS(perfBand, range.size(), 0U);
     const int32_t areaWidth = lv_area_get_width(&area);
     const int32_t areaHeight = lv_area_get_height(&area);
     for (std::size_t index = range.begin; index < range.end; ++index) {
@@ -507,6 +509,7 @@ FLASHMEM void CurvePreviewWidget::serviceMarker() {
 
 FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
     if (!rendered_ || geometry_.sampleCount < 2U || layer == nullptr) return;
+    OC_PERF_SCOPE(perfDraw, "ui.curve-preview.draw");
     const auto& props = *renderedProps_;
     const auto sampleRange = curvePreviewSampleRangeForClip(
         renderedArea_->x1,
