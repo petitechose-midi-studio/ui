@@ -87,6 +87,10 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
         return;
     }
 
+    // The presentation registry can reveal the root before the first render.
+    // Prepare styles as well as layout while hidden, then show the final state.
+    if (!overlay_.isVisible()) lv_obj_add_flag(overlay_.getElement(), LV_OBJ_FLAG_HIDDEN);
+
     // Track whether we need to force a rebind (data or per-slot layout changed).
     bool dataChanged = false;
     const bool revisionChanged = props.dataRevision != 0 &&
