@@ -89,6 +89,70 @@ static void checkKeyValueTransitions(lv_obj_t* parent, lv_display_t* display) {
     std::puts("key-value provider/fixed transitions: 18 passed");
 }
 
+static void checkMenuValuePresentation(lv_obj_t* parent, lv_display_t* display, bool reference) {
+    unsigned glyphQueries = 0;
+    lv_font_t countedFont = *LV_FONT_DEFAULT;
+    countedFont.user_data = &glyphQueries;
+    countedFont.get_glyph_dsc = [](const lv_font_t* font, lv_font_glyph_dsc_t* out,
+                                  uint32_t letter, uint32_t next) {
+        ++*static_cast<unsigned*>(font->user_data);
+        return (LV_FONT_DEFAULT)->get_glyph_dsc(LV_FONT_DEFAULT, out, letter, next);
+    };
+    fonts.inter_14_semibold = &countedFont;
+    {
+        ms::ui::MenuListView menu(parent);
+        ms::ui::MenuRow row{.label = "Depth", .value = "42", .tone = ms::ui::MenuRowTone::Warning};
+        menu.render({.rows = &row, .rowCount = 1});
+        lv_refr_now(display);
+        glyphQueries = 0;
+        char expectedText[48]{};
+        ms::ui::text::formatEllipsized(expectedText, sizeof(expectedText), "42", &countedFont, 106);
+        const unsigned onePresentation = glyphQueries;
+        glyphQueries = 0;
+        row.label = "Amount"; // Same value: count formatting, not changed label rasterization.
+        menu.render({.rows = &row, .rowCount = 1});
+        std::printf("menu unchanged value glyph queries=%u\n", glyphQueries);
+        if (!reference) assert(glyphQueries == onePresentation);
+        lv_refr_now(display);
+        auto* value = findVisibleText(menu.getElement(), "42");
+        assert(value);
+        const auto color = lv_obj_get_style_text_color(value, LV_PART_MAIN);
+        row.valueAutoScroll = true; // Create the scroller after the style is already retained.
+        menu.render({.rows = &row, .rowCount = 1});
+        lv_refr_now(display);
+        value = findVisibleText(menu.getElement(), "42");
+        assert(value);
+        std::printf("menu late scroller preserves color=%d\n",
+            lv_color_eq(lv_obj_get_style_text_color(value, LV_PART_MAIN), color));
+        if (!reference) assert(lv_color_eq(lv_obj_get_style_text_color(value, LV_PART_MAIN), color));
+        row.valueAutoScroll = false;
+        row.value = "64";
+        menu.render({.rows = &row, .rowCount = 1});
+        lv_refr_now(display);
+        assert(findVisibleText(menu.getElement(), "64"));
+        std::array<ms::ui::MenuRow, 6> rows{};
+        for (auto& item : rows) item = row;
+        rows[4] = {.label = "Disabled", .value = "7", .enabled = false};
+        rows[5] = {.label = "Last", .value = "8"};
+        for (int count : {6, 1, 0, 6}) {
+            menu.render({.rows = rows.data(), .rowCount = count, .selectedIndex = count - 1,
+                .dataRevision = 1});
+            lv_refr_now(display);
+            assert((findVisibleText(menu.getElement(), "Last") != nullptr) == (count == 6));
+        }
+        for (int selected : {3, 4, 3}) {
+            menu.render({.rows = rows.data(), .rowCount = 6, .selectedIndex = selected,
+                .dataRevision = 1});
+            lv_refr_now(display);
+            auto* disabled = findVisibleText(menu.getElement(), "7");
+            assert(disabled);
+            assert(lv_obj_get_style_text_opa(disabled, LV_PART_MAIN) ==
+                (selected == 4 ? LV_OPA_COVER : LV_OPA_50));
+        }
+    }
+    fonts.inter_14_semibold = const_cast<lv_font_t*>(LV_FONT_DEFAULT);
+}
+
 int main(int argc, char** argv) {
     checkRetainedText();
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
@@ -198,6 +262,7 @@ int main(int argc, char** argv) {
         }
     }
     checkKeyValueTransitions(parent, display);
+    checkMenuValuePresentation(parent, display, !requireHiddenBinding);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};

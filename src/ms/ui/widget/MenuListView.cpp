@@ -221,18 +221,6 @@ FLASHMEM void MenuListView::syncRows(
         }
     }
 
-    for (int i = nextCount; i < row_count_; ++i) {
-        auto& current = rows_[static_cast<std::size_t>(i)];
-        copyTextIfChanged(current.label, "");
-        copyTextIfChanged(current.value, "");
-        copyIconIfChanged(current.icon, "");
-        current.kind = MenuRowKind::Value;
-        current.tone = MenuRowTone::Neutral;
-        current.enabled = true;
-        current.valueAutoScroll = false;
-        current.valueRole = MenuRowValueRole::Value;
-    }
-
     last_data_revision_ = props.dataRevision;
     last_row_count_ = nextCount;
     row_count_ = nextCount;
@@ -364,7 +352,7 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
     applyRowStyle(widgets, row);
 
     widgets.boundIndex = index;
-    applyHighlightStyle(slot, widgets, isSelected, row);
+    applyHighlightStyle(slot, widgets, isSelected);
 }
 
 FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
@@ -376,7 +364,8 @@ FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool 
 
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(slot.boundIndex)];
-    applyHighlightStyle(slot, widgets, isSelected, row);
+    syncValuePresentation(widgets, row, isSelected);
+    applyHighlightStyle(slot, widgets, isSelected);
 }
 
 FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
@@ -439,6 +428,8 @@ FLASHMEM void MenuListView::ensureValueScroller(SlotWidgets& widgets, MenuRowVal
         .ownsLvglObjects(false);
     lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
     widgets.valueLayoutApplied = false;
+    widgets.rowStyleApplied = false;
+    widgets.highlightStyleApplied = false;
     applyValueLayout(widgets, role, widgets.iconVisible);
 }
 
@@ -528,13 +519,9 @@ FLASHMEM void MenuListView::syncValuePresentation(
 FLASHMEM void MenuListView::applyHighlightStyle(
     widget::VirtualSlot& slot,
     SlotWidgets& widgets,
-    bool isSelected,
-    const RowCache& row
+    bool isSelected
 ) {
-    const bool shouldScroll = row.valueAutoScroll && isSelected;
-    if (widgets.highlightStyleApplied &&
-        widgets.highlighted == isSelected &&
-        widgets.valueScrollerActive == shouldScroll) {
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) {
         return;
     }
 
@@ -571,8 +558,6 @@ FLASHMEM void MenuListView::applyHighlightStyle(
             LV_STATE_DEFAULT
         );
     }
-
-    syncValuePresentation(widgets, row, isSelected);
 }
 
 FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& row) {
@@ -606,26 +591,12 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
         }
         widgets.valueColor = valueColor;
     }
-    if (!widgets.rowStyleApplied || widgets.labelOpa != labelOpa) {
-        if (widgets.icon) {
-            lv_obj_set_style_text_opa(widgets.icon, labelOpa, 0);
-        }
-        if (widgets.label) {
-            lv_obj_set_style_text_opa(widgets.label, labelOpa, 0);
-        }
-        widgets.labelOpa = labelOpa;
+    if (!widgets.rowStyleApplied || widgets.labelOpa != labelOpa || widgets.valueOpa != valueOpa) {
+        widgets.highlightStyleApplied = false;
     }
-    if (!widgets.rowStyleApplied || widgets.valueOpa != valueOpa) {
-        if (widgets.value) {
-            lv_obj_set_style_text_opa(widgets.value, valueOpa, 0);
-        }
-        if (widgets.valueScroller) {
-            lv_obj_set_style_text_opa(widgets.valueScroller->getLabel(), valueOpa, 0);
-        }
-        widgets.valueOpa = valueOpa;
-    }
+    widgets.labelOpa = labelOpa;
+    widgets.valueOpa = valueOpa;
     widgets.rowStyleApplied = true;
-    widgets.highlightStyleApplied = false;
 }
 
 }  // namespace ms::ui
