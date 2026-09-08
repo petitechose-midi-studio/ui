@@ -128,7 +128,7 @@ FLASHMEM void drawCurveWithDiscontinuities(
     lv_opa_t opacity,
     lv_coord_t width
 ) {
-    if (range.size() < 2U) return;
+    if (range.size() < 2U || opacity == LV_OPA_TRANSP || width <= 0) return;
     populatePoints(
         geometry.curve,
         geometry.sampleCount,
@@ -556,36 +556,17 @@ FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
             props.impactColor,
             props.bandOpacity
         );
-        populatePoints(
-            geometry_.base,
-            geometry_.sampleCount,
-            sampleRange,
-            *renderedArea_,
-            drawPoints_
-        );
-        drawLine(
-            layer,
-            drawPoints_.data(),
-            static_cast<uint32_t>(sampleRange.size()),
-            props.baseColor,
-            props.baseOpacity,
-            props.baseWidth
-        );
-        populatePoints(
-            geometry_.impact,
-            geometry_.sampleCount,
-            sampleRange,
-            *renderedArea_,
-            drawPoints_
-        );
-        drawLine(
-            layer,
-            drawPoints_.data(),
-            static_cast<uint32_t>(sampleRange.size()),
-            props.impactColor,
-            props.impactOpacity,
-            props.impactWidth
-        );
+        const auto drawRail = [&](const auto& values, uint32_t color,
+                                  lv_opa_t opacity, lv_coord_t width) {
+            if (opacity == LV_OPA_TRANSP || width <= 0) return;
+            populatePoints(values, geometry_.sampleCount, sampleRange,
+                           *renderedArea_, drawPoints_);
+            drawLine(layer, drawPoints_.data(),
+                     static_cast<uint32_t>(sampleRange.size()),
+                     color, opacity, width);
+        };
+        drawRail(geometry_.base, props.baseColor, props.baseOpacity, props.baseWidth);
+        drawRail(geometry_.impact, props.impactColor, props.impactOpacity, props.impactWidth);
     }
     drawCurveWithDiscontinuities(
         layer,
