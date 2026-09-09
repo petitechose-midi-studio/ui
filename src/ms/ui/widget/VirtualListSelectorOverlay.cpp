@@ -1,6 +1,6 @@
 #include "VirtualListSelectorOverlay.hpp"
 
-#include <cstring>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/type/TextFormat.hpp>
@@ -51,32 +51,14 @@ FLASHMEM VirtualListSelectorOverlay::~VirtualListSelectorOverlay() {
 }
 
 FLASHMEM bool VirtualListSelectorOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[TEXT_CACHE_SIZE] = {};
-    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
-    next[TEXT_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
-    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM bool VirtualListSelectorOverlay::copyIconIfChanged(
     IconCache& cache,
     const char* text
 ) {
-    const char* source = text ? text : "";
-    char next[ICON_CACHE_SIZE] = {};
-    std::strncpy(next, source, ICON_CACHE_SIZE - 1);
-    next[ICON_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, ICON_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, ICON_CACHE_SIZE - 1);
-    cache.text[ICON_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM void VirtualListSelectorOverlay::setLabelTextIfChanged(
@@ -104,6 +86,10 @@ FLASHMEM void VirtualListSelectorOverlay::render(const VirtualListSelectorOverla
         overlay_.hide();
         return;
     }
+
+    // The presentation registry can reveal the root before the first render.
+    // Prepare styles as well as layout while hidden, then show the final state.
+    if (!overlay_.isVisible()) lv_obj_add_flag(overlay_.getElement(), LV_OBJ_FLAG_HIDDEN);
 
     // Track whether we need to force a rebind (data or per-slot layout changed).
     bool dataChanged = false;
@@ -227,6 +213,7 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
             ? current_props_.values[index]
             : "";
     }
+    if (value[0] != '\0') ensureValue(widgets);
     if (widgets.value) {
         setLabelTextIfChanged(widgets.value, widgets.valueCache, value);
         if (value[0] != '\0') {
@@ -255,22 +242,21 @@ FLASHMEM void VirtualListSelectorOverlay::bindSlot(widget::VirtualSlot& slot, in
         }
     }
 
-    if (widgets.indexLabel) {
+    if (current_props_.showIndexColumn) {
+        ensureIndex(widgets);
         char indexStr[12];
         oc::type::text::formatUnsigned(indexStr, sizeof(indexStr), static_cast<unsigned>(index + 1));
         setLabelTextIfChanged(widgets.indexLabel, widgets.indexCache, indexStr);
-
-        if (!widgets.indexVisibilityApplied || widgets.indexVisible != current_props_.showIndexColumn) {
-            if (current_props_.showIndexColumn) {
-                lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
-            } else {
-                lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
-            }
-            widgets.indexVisible = current_props_.showIndexColumn;
-            widgets.indexVisibilityApplied = true;
-        }
+        if (widgets.indexLabel) lv_obj_clear_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
+    } else if (widgets.indexLabel) {
+        lv_obj_add_flag(widgets.indexLabel, LV_OBJ_FLAG_HIDDEN);
     }
 
+    // A recycled slot can keep the same focus state but represent a different
+    // semantic color. Its previous highlight style is no longer authoritative.
+    if (widgets.boundIndex != index && current_props_.iconColors) {
+        widgets.highlightStyleApplied = false;
+    }
     widgets.boundIndex = index;
     applyHighlightStyle(widgets, isSelected);
 }
@@ -296,22 +282,25 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
     lv_obj_set_style_pad_right(container, PAD_H, LV_STATE_DEFAULT);
     lv_obj_set_style_pad_column(container, COL_GAP, LV_STATE_DEFAULT);
 
-    widgets.indexLabel = lv_label_create(container);
-    lv_obj_set_width(widgets.indexLabel, INDEX_W);
-    lv_obj_set_style_text_align(widgets.indexLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
-    if (fonts.list_item_label) {
-        lv_obj_set_style_text_font(widgets.indexLabel, fonts.list_item_label, LV_STATE_DEFAULT);
-    }
-    style::apply(widgets.indexLabel).textColor(base_theme::color::INACTIVE);
-
+    // All row text is single-line; intrinsic height measurement is unnecessary.
     widgets.label = lv_label_create(container);
+    lv_obj_set_width(widgets.label, 0);
     lv_obj_set_flex_grow(widgets.label, 1);
     lv_label_set_long_mode(widgets.label, LV_LABEL_LONG_DOT);
     if (fonts.list_item_label) {
         lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, LV_STATE_DEFAULT);
     }
+    lv_obj_set_height(widgets.label, lv_obj_get_style_text_font(widgets.label, LV_PART_MAIN)->line_height);
 
-    widgets.value = lv_label_create(container);
+    widgets.created = true;
+}
+
+FLASHMEM void VirtualListSelectorOverlay::ensureValue(SlotWidgets& widgets) {
+    if (widgets.value || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.value = lv_label_create(parent);
     lv_obj_set_width(widgets.value, VALUE_W);
     lv_obj_set_style_text_align(
         widgets.value, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT
@@ -323,8 +312,25 @@ FLASHMEM void VirtualListSelectorOverlay::ensureSlotWidgets(lv_obj_t* container,
         );
     }
     lv_obj_add_flag(widgets.value, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(widgets.value, lv_obj_get_style_text_font(widgets.value, LV_PART_MAIN)->line_height);
 
-    widgets.created = true;
+    widgets.highlightStyleApplied = false;
+}
+
+FLASHMEM void VirtualListSelectorOverlay::ensureIndex(SlotWidgets& widgets) {
+    if (widgets.indexLabel || !widgets.label) return;
+    auto* parent = lv_obj_get_parent(widgets.label);
+    if (!parent) return;
+
+    widgets.indexLabel = lv_label_create(parent);
+    lv_obj_set_width(widgets.indexLabel, INDEX_W);
+    lv_obj_set_style_text_align(widgets.indexLabel, LV_TEXT_ALIGN_RIGHT, LV_STATE_DEFAULT);
+    if (fonts.list_item_label) {
+        lv_obj_set_style_text_font(widgets.indexLabel, fonts.list_item_label, LV_STATE_DEFAULT);
+    }
+    lv_obj_set_height(widgets.indexLabel, lv_obj_get_style_text_font(widgets.indexLabel, LV_PART_MAIN)->line_height);
+    lv_obj_move_to_index(widgets.indexLabel, 0);
+    widgets.highlightStyleApplied = false;
 }
 
 FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {
@@ -337,7 +343,7 @@ FLASHMEM void VirtualListSelectorOverlay::ensureIcon(SlotWidgets& widgets) {
     lv_obj_set_width(widgets.icon, ICON_W);
     lv_obj_set_style_text_align(widgets.icon, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(widgets.icon, LV_LABEL_LONG_CLIP);
-    lv_obj_move_to_index(widgets.icon, 1);
+    lv_obj_move_to_index(widgets.icon, widgets.indexLabel ? 1 : 0);
     widgets.highlightStyleApplied = false;
 }
 

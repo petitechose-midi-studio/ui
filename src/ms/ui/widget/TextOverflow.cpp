@@ -39,6 +39,16 @@ FLASHMEM void copyPrefixWithEllipsis(char* output, std::size_t outputSize,
 
 }  // namespace
 
+FLASHMEM bool copyTruncatedIfChanged(char* output, std::size_t outputSize,
+                                    const char* source) {
+    if (!output || outputSize == 0U) return false;
+    source = source ? source : "";
+    if (std::strncmp(output, source, outputSize - 1U) == 0) return false;
+    std::strncpy(output, source, outputSize - 1U);
+    output[outputSize - 1U] = '\0';
+    return true;
+}
+
 FLASHMEM bool formatEllipsized(char* output, std::size_t outputSize,
                                const char* source, const lv_font_t* font,
                                lv_coord_t maxWidth) {

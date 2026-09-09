@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstring>
 
 #include <config/PlatformCompat.hpp>
 #include <ms/ui/font/CoreFonts.hpp>
@@ -66,29 +65,11 @@ FLASHMEM MenuListView::~MenuListView() {
 }
 
 FLASHMEM bool MenuListView::copyTextIfChanged(TextCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[TEXT_CACHE_SIZE] = {};
-    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
-    next[TEXT_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
-    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM bool MenuListView::copyIconIfChanged(IconCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[ICON_CACHE_SIZE] = {};
-    std::strncpy(next, source, ICON_CACHE_SIZE - 1);
-    next[ICON_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, ICON_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, ICON_CACHE_SIZE - 1);
-    cache.text[ICON_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM void MenuListView::setLabelTextIfChanged(
@@ -148,14 +129,17 @@ FLASHMEM void MenuListView::createUi(lv_obj_t* parent) {
     title_ = lv_label_create(header_);
     lv_label_set_text(title_, "");
     lv_obj_set_style_text_font(title_, fonts.context_title(), 0);
+    lv_obj_set_height(title_, lv_obj_get_style_text_font(title_, LV_PART_MAIN)->line_height);
     lv_obj_set_style_text_color(title_, lv_color_hex(base_theme::color::TEXT_PRIMARY), 0);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_CLIP);
     lv_obj_set_width(title_, 132);
 
     meta_ = lv_label_create(header_);
     lv_label_set_text(meta_, "");
+    lv_obj_set_width(meta_, 0);
     lv_obj_set_flex_grow(meta_, 1);
     lv_obj_set_style_text_font(meta_, fonts.inter_12_medium, 0);
+    lv_obj_set_height(meta_, lv_obj_get_style_text_font(meta_, LV_PART_MAIN)->line_height);
     lv_obj_set_style_text_color(meta_, lv_color_hex(base_theme::color::TEXT_SECONDARY), 0);
     lv_obj_set_style_text_opa(meta_, LV_OPA_80, 0);
     lv_label_set_long_mode(meta_, LV_LABEL_LONG_DOT);
@@ -235,18 +219,6 @@ FLASHMEM void MenuListView::syncRows(
             dirtyCount < MAX_ROWS) {
             dirtyIndices[static_cast<std::size_t>(dirtyCount++)] = i;
         }
-    }
-
-    for (int i = nextCount; i < row_count_; ++i) {
-        auto& current = rows_[static_cast<std::size_t>(i)];
-        copyTextIfChanged(current.label, "");
-        copyTextIfChanged(current.value, "");
-        copyIconIfChanged(current.icon, "");
-        current.kind = MenuRowKind::Value;
-        current.tone = MenuRowTone::Neutral;
-        current.enabled = true;
-        current.valueAutoScroll = false;
-        current.valueRole = MenuRowValueRole::Value;
     }
 
     last_data_revision_ = props.dataRevision;
@@ -380,7 +352,7 @@ FLASHMEM void MenuListView::bindSlot(widget::VirtualSlot& slot, int index, bool 
     applyRowStyle(widgets, row);
 
     widgets.boundIndex = index;
-    applyHighlightStyle(slot, widgets, isSelected, row);
+    applyHighlightStyle(slot, widgets, isSelected);
 }
 
 FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool isSelected) {
@@ -392,7 +364,8 @@ FLASHMEM void MenuListView::updateSlotHighlight(widget::VirtualSlot& slot, bool 
 
     auto& widgets = slot_widgets_[static_cast<std::size_t>(slotIndex)];
     const auto& row = rows_[static_cast<std::size_t>(slot.boundIndex)];
-    applyHighlightStyle(slot, widgets, isSelected, row);
+    syncValuePresentation(widgets, row, isSelected);
+    applyHighlightStyle(slot, widgets, isSelected);
 }
 
 FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
@@ -407,9 +380,12 @@ FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
 
     widgets.label = lv_label_create(row);
     lv_label_set_text(widgets.label, "");
+    lv_obj_set_width(widgets.label, 0);
     lv_obj_set_flex_grow(widgets.label, 1);
     lv_label_set_long_mode(widgets.label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.label, fonts.list_item_label, 0);
+    // As in selectors, single-line rows do not need intrinsic text heights.
+    lv_obj_set_height(widgets.label, lv_obj_get_style_text_font(widgets.label, LV_PART_MAIN)->line_height);
 
     widgets.value = lv_label_create(row);
     lv_label_set_text(widgets.value, "");
@@ -417,6 +393,7 @@ FLASHMEM void MenuListView::ensureSlotWidgets(lv_obj_t* row, int slotIndex) {
     lv_obj_set_style_text_align(widgets.value, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_long_mode(widgets.value, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(widgets.value, fonts.inter_14_semibold, 0);
+    lv_obj_set_height(widgets.value, lv_obj_get_style_text_font(widgets.value, LV_PART_MAIN)->line_height);
 
     widgets.created = true;
 }
@@ -451,6 +428,8 @@ FLASHMEM void MenuListView::ensureValueScroller(SlotWidgets& widgets, MenuRowVal
         .ownsLvglObjects(false);
     lv_obj_add_flag(widgets.valueScroller->getElement(), LV_OBJ_FLAG_HIDDEN);
     widgets.valueLayoutApplied = false;
+    widgets.rowStyleApplied = false;
+    widgets.highlightStyleApplied = false;
     applyValueLayout(widgets, role, widgets.iconVisible);
 }
 
@@ -540,13 +519,9 @@ FLASHMEM void MenuListView::syncValuePresentation(
 FLASHMEM void MenuListView::applyHighlightStyle(
     widget::VirtualSlot& slot,
     SlotWidgets& widgets,
-    bool isSelected,
-    const RowCache& row
+    bool isSelected
 ) {
-    const bool shouldScroll = row.valueAutoScroll && isSelected;
-    if (widgets.highlightStyleApplied &&
-        widgets.highlighted == isSelected &&
-        widgets.valueScrollerActive == shouldScroll) {
+    if (widgets.highlightStyleApplied && widgets.highlighted == isSelected) {
         return;
     }
 
@@ -583,8 +558,6 @@ FLASHMEM void MenuListView::applyHighlightStyle(
             LV_STATE_DEFAULT
         );
     }
-
-    syncValuePresentation(widgets, row, isSelected);
 }
 
 FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& row) {
@@ -618,26 +591,12 @@ FLASHMEM void MenuListView::applyRowStyle(SlotWidgets& widgets, const RowCache& 
         }
         widgets.valueColor = valueColor;
     }
-    if (!widgets.rowStyleApplied || widgets.labelOpa != labelOpa) {
-        if (widgets.icon) {
-            lv_obj_set_style_text_opa(widgets.icon, labelOpa, 0);
-        }
-        if (widgets.label) {
-            lv_obj_set_style_text_opa(widgets.label, labelOpa, 0);
-        }
-        widgets.labelOpa = labelOpa;
+    if (!widgets.rowStyleApplied || widgets.labelOpa != labelOpa || widgets.valueOpa != valueOpa) {
+        widgets.highlightStyleApplied = false;
     }
-    if (!widgets.rowStyleApplied || widgets.valueOpa != valueOpa) {
-        if (widgets.value) {
-            lv_obj_set_style_text_opa(widgets.value, valueOpa, 0);
-        }
-        if (widgets.valueScroller) {
-            lv_obj_set_style_text_opa(widgets.valueScroller->getLabel(), valueOpa, 0);
-        }
-        widgets.valueOpa = valueOpa;
-    }
+    widgets.labelOpa = labelOpa;
+    widgets.valueOpa = valueOpa;
     widgets.rowStyleApplied = true;
-    widgets.highlightStyleApplied = false;
 }
 
 }  // namespace ms::ui

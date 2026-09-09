@@ -146,8 +146,7 @@ private:
     void ensureValueScroller(SlotWidgets& widgets, MenuRowValueRole role);
     void applyHighlightStyle(oc::ui::lvgl::widget::VirtualSlot& slot,
                              SlotWidgets& widgets,
-                             bool isSelected,
-                             const RowCache& row);
+                             bool isSelected);
     void applyValueLayout(SlotWidgets& widgets, MenuRowValueRole role, bool iconVisible);
     void syncValuePresentation(SlotWidgets& widgets, const RowCache& row,
                                bool isSelected);

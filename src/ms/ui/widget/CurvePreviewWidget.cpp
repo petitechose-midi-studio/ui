@@ -39,8 +39,15 @@ FLASHMEM void drawLine(
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
     dsc.base.layer = layer;
-    dsc.points = points;
-    dsc.point_cnt = count;
+    if (count == 2U) {
+        // LVGL copies a polyline's point array. A single segment fits in the
+        // descriptor, avoiding that allocation for guides and band columns.
+        dsc.p1 = points[0];
+        dsc.p2 = points[1];
+    } else {
+        dsc.points = points;
+        dsc.point_cnt = count;
+    }
     dsc.color = lv_color_hex(color);
     dsc.opa = opacity;
     dsc.width = width;
@@ -121,7 +128,7 @@ FLASHMEM void drawCurveWithDiscontinuities(
     lv_opa_t opacity,
     lv_coord_t width
 ) {
-    if (range.size() < 2U) return;
+    if (range.size() < 2U || opacity == LV_OPA_TRANSP || width <= 0) return;
     populatePoints(
         geometry.curve,
         geometry.sampleCount,
@@ -177,6 +184,8 @@ FLASHMEM void drawImpactBand(
 ) {
     const std::size_t count = geometry.sampleCount;
     if (range.size() < 2U || opacity == LV_OPA_TRANSP) return;
+    OC_PERF_SCOPE(perfBand, "ui.curve-preview.band-draw");
+    OC_PERF_UNITS(perfBand, range.size(), 0U);
     const int32_t areaWidth = lv_area_get_width(&area);
     const int32_t areaHeight = lv_area_get_height(&area);
     for (std::size_t index = range.begin; index < range.end; ++index) {
@@ -500,6 +509,7 @@ FLASHMEM void CurvePreviewWidget::serviceMarker() {
 
 FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
     if (!rendered_ || geometry_.sampleCount < 2U || layer == nullptr) return;
+    OC_PERF_SCOPE(perfDraw, "ui.curve-preview.draw");
     const auto& props = *renderedProps_;
     const auto sampleRange = curvePreviewSampleRangeForClip(
         renderedArea_->x1,
@@ -546,36 +556,17 @@ FLASHMEM void CurvePreviewWidget::draw(lv_layer_t* layer) {
             props.impactColor,
             props.bandOpacity
         );
-        populatePoints(
-            geometry_.base,
-            geometry_.sampleCount,
-            sampleRange,
-            *renderedArea_,
-            drawPoints_
-        );
-        drawLine(
-            layer,
-            drawPoints_.data(),
-            static_cast<uint32_t>(sampleRange.size()),
-            props.baseColor,
-            props.baseOpacity,
-            props.baseWidth
-        );
-        populatePoints(
-            geometry_.impact,
-            geometry_.sampleCount,
-            sampleRange,
-            *renderedArea_,
-            drawPoints_
-        );
-        drawLine(
-            layer,
-            drawPoints_.data(),
-            static_cast<uint32_t>(sampleRange.size()),
-            props.impactColor,
-            props.impactOpacity,
-            props.impactWidth
-        );
+        const auto drawRail = [&](const auto& values, uint32_t color,
+                                  lv_opa_t opacity, lv_coord_t width) {
+            if (opacity == LV_OPA_TRANSP || width <= 0) return;
+            populatePoints(values, geometry_.sampleCount, sampleRange,
+                           *renderedArea_, drawPoints_);
+            drawLine(layer, drawPoints_.data(),
+                     static_cast<uint32_t>(sampleRange.size()),
+                     color, opacity, width);
+        };
+        drawRail(geometry_.base, props.baseColor, props.baseOpacity, props.baseWidth);
+        drawRail(geometry_.impact, props.impactColor, props.impactOpacity, props.impactWidth);
     }
     drawCurveWithDiscontinuities(
         layer,

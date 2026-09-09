@@ -1,7 +1,7 @@
 #include "VirtualListKeyValueOverlay.hpp"
 
 #include <algorithm>
-#include <cstring>
+#include <ms/ui/widget/TextOverflow.hpp>
 
 #include <config/PlatformCompat.hpp>
 #include <oc/ui/lvgl/style/StyleBuilder.hpp>
@@ -135,16 +135,7 @@ FLASHMEM VirtualListKeyValueOverlay::~VirtualListKeyValueOverlay() {
 }
 
 FLASHMEM bool VirtualListKeyValueOverlay::copyTextIfChanged(TextCache& cache, const char* text) {
-    const char* source = text ? text : "";
-    char next[TEXT_CACHE_SIZE] = {};
-    std::strncpy(next, source, TEXT_CACHE_SIZE - 1);
-    next[TEXT_CACHE_SIZE - 1] = '\0';
-
-    if (std::strncmp(cache.text, next, TEXT_CACHE_SIZE) == 0) return false;
-
-    std::strncpy(cache.text, next, TEXT_CACHE_SIZE - 1);
-    cache.text[TEXT_CACHE_SIZE - 1] = '\0';
-    return true;
+    return text::copyTruncatedIfChanged(cache.text, sizeof(cache.text), text);
 }
 
 FLASHMEM bool VirtualListKeyValueOverlay::copySparklineIfChanged(
@@ -216,17 +207,9 @@ FLASHMEM void VirtualListKeyValueOverlay::syncRows(
         }
     }
 
-    for (int i = nextCount; i < row_count_; ++i) {
-        auto& current = rows_[static_cast<size_t>(i)];
-        copyTextIfChanged(current.key, "");
-        copyTextIfChanged(current.value, "");
-        copyTextIfChanged(current.detail, "");
-        copyTextIfChanged(current.icon, "");
-        current.iconFont = nullptr;
-        current.iconColor = 0;
-        copySparklineIfChanged(current.sparkline, KeyValueSparkline{});
-    }
-
+    // Rows outside nextCount are not read. If the list grows, the loop above
+    // refreshes them before binding; a provider's logical count never indexes
+    // this fixed cache.
     last_data_revision_ = props.dataRevision;
     last_row_count_ = nextCount;
     row_count_ = nextCount;
@@ -746,7 +729,8 @@ FLASHMEM void VirtualListKeyValueOverlay::serviceSparklineMarkers() {
     const uint32_t nowMs = lv_tick_get();
     for (auto& widgets : slot_widgets_) {
         if (!widgets.sparklineVisible || !widgets.sparklineSurface ||
-            widgets.sparkline.markerProvider == nullptr) {
+            widgets.sparkline.markerProvider == nullptr ||
+            !lv_obj_is_visible(widgets.sparklineSurface)) {
             continue;
         }
         KeyValueSparklineMarker next{};
