@@ -8,6 +8,7 @@
 #include <ms/ui/widget/VirtualListSelectorOverlay.hpp>
 #include <ms/ui/widget/VirtualListKeyValueOverlay.hpp>
 #include <ms/ui/widget/MenuListView.hpp>
+#include <ms/ui/widget/ListOverlay.hpp>
 #include <ms/ui/widget/TextOverflow.hpp>
 
 // Exercise the real component with LVGL's built-in font, without loading assets.
@@ -327,6 +328,44 @@ static void checkHiddenSparklineMarkers(lv_obj_t* parent, lv_display_t* display)
     }
 }
 
+static void checkSharedListOverlay(lv_obj_t* parent, lv_display_t* display) {
+    const auto initialObjects = countObjects(parent);
+    {
+        ms::ui::ListOverlay overlay(parent);
+        overlay.setTitle("Pages");
+        overlay.setItems(std::vector<std::string>{"First", "Second", "Third"});
+        overlay.setSelectedIndex(2);
+        overlay.show();
+        lv_refr_now(display);
+        assert(overlay.isVisible());
+        assert(overlay.getSelectedIndex() == 2);
+        assert(findVisibleText(overlay.getElement(), "Third") != nullptr);
+
+        // Bitwig supplies owned strings: shrinking while open must clamp the
+        // selection and remove stale rows, including after hide/reopen.
+        overlay.setItems(std::vector<std::string>{"Replacement"});
+        lv_refr_now(display);
+        assert(overlay.getSelectedIndex() == 0);
+        assert(overlay.getItemCount() == 1);
+        assert(findVisibleText(overlay.getElement(), "Third") == nullptr);
+        assert(findVisibleText(overlay.getElement(), "Replacement") != nullptr);
+        const auto retainedObjects = countObjects(parent);
+        for (int pass = 0; pass < 3; ++pass) {
+            overlay.hide();
+            assert(!overlay.isVisible());
+            overlay.show();
+            lv_refr_now(display);
+            assert(findVisibleText(overlay.getElement(), "Replacement") != nullptr);
+            assert(countObjects(parent) == retainedObjects);
+        }
+        overlay.setItems(std::vector<std::string>{});
+        assert(overlay.getItemCount() == 0);
+        assert(overlay.getSelectedIndex() == -1);
+        overlay.hide();
+    }
+    assert(countObjects(parent) == initialObjects);
+}
+
 int main(int argc, char** argv) {
     checkRetainedText();
     const bool requireHiddenBinding = argc < 2 || std::strcmp(argv[1], "--reference") != 0;
@@ -441,6 +480,7 @@ int main(int argc, char** argv) {
     checkHiddenSparklineMarkers(parent, display);
     checkOptionalSelectorValues(parent, display, pixels);
     checkOptionalSelectorIndex(parent, display);
+    checkSharedListOverlay(parent, display);
     {
         ms::ui::VirtualListSelectorOverlay selector(parent);
         const char* names[] = {"Zero", "One", "Two", "Three", "Four", "Five"};
