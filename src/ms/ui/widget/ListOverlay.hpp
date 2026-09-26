@@ -58,17 +58,6 @@ public:
     void setItems(const char* const* items, size_t itemCount);
     void setSelectedIndex(int index);
 
-    /**
-     * @brief Append new items to the list without destroying existing ones
-     *
-     * Optimized for windowed loading where items are added incrementally.
-     * Only creates new LVGL objects for the appended items.
-     *
-     * @param items Full list including existing + new items
-     * @return Number of new items appended (0 if full rebuild was needed)
-     */
-    size_t appendItemsIfPossible(const std::vector<std::string>& items);
-
     void show() override;
     void hide() override;
     bool isVisible() const override;
