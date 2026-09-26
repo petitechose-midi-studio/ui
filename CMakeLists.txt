@@ -7,6 +7,8 @@ include(CTest)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# No C++ modules; Zig's Clang frontend does not ship clang-scan-deps.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/MidiStudioUiSources.cmake")
 
@@ -19,6 +21,7 @@ target_include_directories(midi_studio_ui
 target_compile_features(midi_studio_ui INTERFACE cxx_std_17)
 
 if(BUILD_TESTING)
+    include(cmake/MidiStudioUiLvglTests.cmake)
     add_executable(
         test_CurvePreviewGeometry
         test/test_CurvePreviewGeometry/test_main.cpp)
